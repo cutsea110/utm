@@ -17,8 +17,9 @@ extra-doc-files:    CHANGELOG.md
 common warnings
     ghc-options: -Wall
 library
-    exposed-modules:  TM
+    exposed-modules:  Compiler
                       Eval
+                      TM
     build-depends:    base ^>=4.22.0.0, containers
     hs-source-dirs:   src
     default-language: GHC2024
