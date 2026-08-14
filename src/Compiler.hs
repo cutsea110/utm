@@ -464,6 +464,143 @@ copy (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` 
     opposite TM.L = TM.R
     opposite TM.R = TM.L
 
+{- | 現在位置を最下位桁とするビット列と、指定方向で最初に見つかる
+区切り記号の右側にあるビット列を比較する。成功時はコピー先列の末尾の
+空白 (`B`) で、不一致時は食い違った桁（または余った桁）の `I` / `O` で
+停止する。終了時には、両方の列を含むテープは入力時と同じ状態へ復元される。
+
+>>> test (match (R, SP)) ([O, I], I, [B, B, SP, I, O, I])
+101__#101 --> 101__#101_
+  ^                    ^
+>>> test (match (L, SP)) ([O, I, B, I, O, I, SP], O, [])
+#101_100 --> #101_100
+       ^        ^
+>>> test (match (R, SP)) ([O, I], I, [B, B, SP, I, O])
+101__#10 --> 101__#10
+  ^            ^
+>>> test (match (R, SP)) ([I], O, [B, B, SP, I, O, I])
+10__#101 --> 10__#101
+ ^                  ^
+-}
+match :: (TM.D, TM.S) -> Compiler
+match (markerDirection, marker) = toMostSignificant `compose` compareBits `compose` finish
+  where
+    toMostSignificant :: Compiler
+    toMostSignificant = skipSeqL `compose` moveR
+
+    compareBits :: Compiler
+    compareBits = while continueSource compareBit
+
+    compareBit :: Compiler
+    compareBit = branch (== TM.I) compareI compareO
+
+    compareI :: Compiler
+    compareI = compareMarked TM.MI TM.HI TM.I
+
+    compareO :: Compiler
+    compareO = compareMarked TM.MO TM.HO TM.O
+
+    compareMarked :: TM.S -> TM.S -> TM.S -> Compiler
+    compareMarked sourceMark targetMark bit = foldl1 compose
+      [ write sourceMark
+      , seekMarker
+      , moveR
+      , skipTargetMarks
+      , branch (== bit)
+          (write targetMark `compose` restoreSource bit `compose` moveR)
+          (branch (== TM.B) seekSourceMark (branch (== TM.I) (write TM.HI) (write TM.HO)))
+      ]
+
+    finish :: Compiler
+    finish = branch isSourceMark sourceLonger
+           $ branch isTargetMark targetMismatch finishAfterSource
+
+    sourceLonger :: Compiler
+    sourceLonger = foldl1 compose
+      [ seekMarker
+      , moveR
+      , restoreTarget
+      , seekSourceMark
+      , restoreSourceMark
+      ]
+
+    targetMismatch :: Compiler
+    targetMismatch = foldl1 compose
+      [ seekSourceMark
+      , restoreSourceMark
+      , seekMarker
+      , moveR
+      , restoreTarget
+      , moveL
+      ]
+
+    finishAfterSource :: Compiler
+    finishAfterSource = foldl1 compose
+      [ seekMarker
+      , moveR
+      , skipTargetMarks
+      , branch (== TM.B) cleanupFromTarget targetLonger
+      ]
+
+    targetLonger :: Compiler
+    targetLonger = branch (== TM.I) (write TM.HI) (write TM.HO)
+                 `compose` cleanupFromTarget
+                 `compose` moveL
+
+    seekMarker :: Compiler
+    seekMarker = while (/= marker) (move markerDirection)
+
+    seekMarkerFromTarget :: Compiler
+    seekMarkerFromTarget = while (/= marker) moveL
+
+    seekSourceMark :: Compiler
+    seekSourceMark = while (not . isSourceMark) (move (opposite markerDirection))
+
+    restoreSource :: TM.S -> Compiler
+    restoreSource bit = seekSourceMark `compose` write bit
+
+    restoreSourceMark :: Compiler
+    restoreSourceMark = branch (== TM.MI) (write TM.I) (write TM.O)
+
+    skipTargetMarks :: Compiler
+    skipTargetMarks = while isTargetMark moveR
+
+    restoreTarget :: Compiler
+    restoreTarget = while isTargetMark restoreBit
+
+    restoreBit :: Compiler
+    restoreBit = branch (== TM.HI) (write TM.I) (write TM.O) `compose` moveR
+
+    cleanupFromTarget :: Compiler
+    cleanupFromTarget = seekMarkerFromTarget `compose` moveR `compose` restoreTarget
+
+    continueSource :: TM.S -> Bool
+    continueSource TM.I  = True
+    continueSource TM.O  = True
+    continueSource TM.B  = False
+    continueSource TM.MI = False
+    continueSource TM.MO = False
+    continueSource TM.HI = False
+    continueSource TM.HO = False
+    continueSource s     = error $ "match: unexpected source symbol: " ++ show s
+
+    isSourceMark :: TM.S -> Bool
+    isSourceMark TM.MI = True
+    isSourceMark TM.MO = True
+    isSourceMark _     = False
+
+    isTargetMark :: TM.S -> Bool
+    isTargetMark TM.HI = True
+    isTargetMark TM.HO = True
+    isTargetMark TM.I  = False
+    isTargetMark TM.O  = False
+    isTargetMark TM.B  = False
+    isTargetMark s     = error $ "match: unexpected target symbol: " ++ show s
+
+    opposite :: TM.D -> TM.D
+    opposite TM.L = TM.R
+    opposite TM.R = TM.L
+
 {- | 最下位桁にいる状態から1を加える
 >>> test add1 ([I, I], I, [B, B])
 111__ --> 1000__
