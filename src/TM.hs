@@ -25,14 +25,14 @@ data S = B  -- ^ blank
        | WQ -- ^ partition work Q
        | WS -- ^ partition work S
        | VT -- ^ virtual tape
-       | TS -- ^ tuple separator
-       | AS -- ^ assoc list separator
+       | TS -- ^ transaction start
+       | ST -- ^ stop transaction
        | SP -- ^ delta code separator
        deriving (Show, Eq)
 
 -- | allSymbols: 全てのシンボル
 allSymbols :: [S]
-allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, VT, TS, AS, SP]
+allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, VT, TS, ST, SP]
 
 -- | writableSymbols: 書き込み可能なシンボル
 writableSymbols :: [S]
@@ -44,16 +44,16 @@ restrictedSymbols = [MI, MO, HB, HI, HO]
 
 -- | readOnlySymbol: 上書き禁止部のシンボル
 readOnlySymbols :: [S]
-readOnlySymbols = [PD, PC, WQ, WS, VT, TS, AS, SP]
+readOnlySymbols = [PD, PC, WQ, WS, VT, TS, ST, SP]
 
 
 -- | utm tape format
---                                                                 |<----      virtual head position     ---->|
---                                                                 |                        v                 |
--- +-----------------------------------+-------------+-------------+-------------+---------------..-----------+
--- |D10,11>10,101,1#10,01>11,011,0# .. |C101101BBBBBB|Q101101BBBBBB|S101101BBBBBB|T10_11___1o110 .. 011__111_0|
--- +-----------------------------------+-------------+-------------+-------------+---------------..-----------+
--- |<--       delta function        -->|<- current ->|<-- workQ -->|<-- workS -->|<--    virtual tape    -->|
+--                                                                  |<----      virtual head position     ---->|
+--                                                                  |                        v                 |
+-- +------------------------------------+-------------+-------------+-------------+---------------..-----------+
+-- |D@10#11#10#101#1;10#01#11#011#0; .. |C101101BBBBBB|Q101101BBBBBB|S101101BBBBBB|T10_11___1o110 .. 011__111_0|
+-- +------------------------------------+-------------+-------------+-------------+---------------..-----------+
+-- |<--        delta function        -->|<- current ->|<-- workQ -->|<-- workS -->|<--    virtual tape    -->|
 --                                          state
 charS :: S -> Char
 charS B  = '_'
@@ -69,8 +69,8 @@ charS PC = 'C'
 charS WQ = 'Q'
 charS WS = 'S'
 charS VT = 'T'
-charS TS = ','
-charS AS = '>'
+charS TS = '@'
+charS ST = ';'
 charS SP = '#'
 
 data A = Move D
