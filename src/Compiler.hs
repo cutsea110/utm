@@ -224,6 +224,15 @@ moveTo (direction, symbol) = while (/= symbol) (move direction)
 moveAfter :: (TM.D, TM.S) -> Compiler
 moveAfter target = moveTo target `compose` moveR
 
+isPlainBit :: S -> Bool
+isPlainBit TM.I = True
+isPlainBit TM.O = True
+isPlainBit TM.B = False
+isPlainBit s    = error $ "unexpected symbol in bit sequence: " ++ show s
+
+skipSeq :: TM.D -> Compiler
+skipSeq direction = while isPlainBit (move direction)
+
 {- | 右へ1,0の列をスキップして空白で停止
 >>> test skipSeqR ([I, I], I, [I, I])
 11111 --> 11111_
@@ -245,13 +254,7 @@ moveAfter target = moveTo target `compose` moveR
   ^         ^
 -}
 skipSeqR :: Compiler
-skipSeqR = while (not . isPlainB) moveR
-  where
-    isPlainB :: TM.S -> Bool
-    isPlainB TM.I = False
-    isPlainB TM.O = False
-    isPlainB TM.B = True
-    isPlainB s    = error $ "skipSeqR: unexpected symbol while skipping non-Blanks: " ++ show s
+skipSeqR = skipSeq TM.R
 
 {- | 左へ1,0の列をスキップして空白で停止
 >>> test skipSeqL ([I, I], I, [I, I])
@@ -274,13 +277,7 @@ skipSeqR = while (not . isPlainB) moveR
   ^         ^
 -}
 skipSeqL :: Compiler
-skipSeqL = while (not . isPlainB) moveL
-  where
-    isPlainB :: TM.S -> Bool
-    isPlainB TM.I = False
-    isPlainB TM.O = False
-    isPlainB TM.B = True
-    isPlainB s    = error $ "skipSeqL: unexpected symbol while skipping non-Blanks: " ++ show s
+skipSeqL = skipSeq TM.L
 
 {- | copyTo: 非破壊的コピー
 >>> test (copyTo (R, SP)) ([I, I], I, [B, B, SP])
@@ -328,12 +325,6 @@ copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose
 
     restoreBit :: Compiler
     restoreBit = branch (== TM.MI) (write TM.I) (write TM.O) `compose` moveL
-
-    isPlainBit :: TM.S -> Bool
-    isPlainBit TM.I = True
-    isPlainBit TM.O = True
-    isPlainBit TM.B = False
-    isPlainBit s    = error $ "copyTo: unexpected source symbol: " ++ show s
 
     isMark :: TM.S -> Bool
     isMark TM.MI = True
@@ -445,14 +436,11 @@ matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `com
     cleanupFromTarget = moveAfter (TM.L, marker) `compose` restoreTarget
 
     continueSource :: TM.S -> Bool
-    continueSource TM.I  = True
-    continueSource TM.O  = True
-    continueSource TM.B  = False
     continueSource TM.MI = False
     continueSource TM.MO = False
     continueSource TM.HI = False
     continueSource TM.HO = False
-    continueSource s     = error $ "matchTo: unexpected source symbol: " ++ show s
+    continueSource s     = isPlainBit s
 
     isSourceMark :: TM.S -> Bool
     isSourceMark TM.MI = True
