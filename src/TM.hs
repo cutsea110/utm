@@ -6,6 +6,12 @@ data D = R -- ^ move right
        deriving (Show, Eq)
 
 -- | symbol
+-- マークはコピーと比較(検索)で使うだけでそれ以外の箇所では使わない。
+-- コピーと比較関数の中だけで存在しうるものとする。
+-- またコピーと比較が目的なので通常はIとOのみ対象でBをマークすることはない。Bを見た時点で通常処理は終了を意味する。
+-- 一方ヘッドはBを指すのでHBが存在する。
+-- 仮想ヘッドはエンコードされたチューリングマシンのヘッドなので仮想テープエリアVT内のみ移動する。
+-- utm のヘッドは ([S],S,[S]) の第2要素位置で表現されるものでテープ全域を走査しうる。
 data S = B  -- ^ blank
        | I  -- ^ 1
        | O  -- ^ 0
@@ -23,6 +29,23 @@ data S = B  -- ^ blank
        | AS -- ^ assoc list separator
        | SP -- ^ delta code separator
        deriving (Show, Eq)
+
+-- | allSymbols: 全てのシンボル
+allSymbols :: [S]
+allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, VT, TS, AS, SP]
+
+-- | writableSymbols: 書き込み可能なシンボル
+writableSymbols :: [S]
+writableSymbols = [B, I, O]
+
+-- | 限定利用シンボル (コピーと照合の関数でのみ出現可能)
+restrictedSymbols :: [S]
+restrictedSymbols = [MI, MO, HB, HI, HO]
+
+-- | readOnlySymbol: 上書き禁止部のシンボル
+readOnlySymbols :: [S]
+readOnlySymbols = [PD, PC, WQ, WS, VT, TS, AS, SP]
+
 
 -- | utm tape format
 --                                                                 |<----      virtual head position     ---->|

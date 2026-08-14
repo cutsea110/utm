@@ -1,6 +1,7 @@
 module Compiler where
 
-import TM (Q(..), Delta, A(..), S(..), D(..), Tape, showTape)
+import TM (Q(..), Delta, A(..), S(..), D(..), Tape, showTape
+          , allSymbols, readOnlySymbols, writableSymbols, restrictedSymbols)
 import Eval (eval)
 
 data Env = Env { state :: Int
@@ -19,15 +20,26 @@ type Compiler = Env -> (Env, TM.Delta)
 
 -- | write: primitives
 write :: TM.S -> Compiler
-write s env0 = (env1, code)
+write s env0
+  | s `elem` candidates = (env1, code)
+  | otherwise = error $ "try to write invalid symbol: " ++ show s
   where code = [ ((get env0, symbol), (get env1, TM.Write s))
-               | symbol <- [TM.I, TM.O, TM.B]
+               | symbol <- candidates
                ]
         env1 = next env0
+        -- テープの delta を除く範囲のみ書き換え可能。従って s には以下のいずれかのみ受け入れる
+        candidates = writableSymbols ++ restrictedSymbols
 
 -- | erase: primitive
 erase :: TM.D -> Compiler
-erase d = while (/= TM.B) (write TM.B `compose` move d)
+erase d = while p (write TM.B `compose` move d)
+  where
+    p :: TM.S -> Bool
+    p c | c == TM.B                  = False
+        | c `elem` writableSymbols   = True
+        | c `elem` readOnlySymbols   = error $ "try to erase read-only symbol: " ++ show c
+        | c `elem` restrictedSymbols = error $ "try to erase restricted symbol: " ++ show c
+        | otherwise                  = error $ "unexpected case: " ++ show c
 
 -- | eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止
 eraseR :: Compiler
@@ -40,7 +52,7 @@ eraseL = erase TM.L
 move :: TM.D -> Compiler
 move d env0 = (env1, code)
   where code = [ ((get env0, symbol), (get env1, TM.Move d))
-               | symbol <- [TM.I, TM.O, TM.B]
+               | symbol <- allSymbols
                ]
         env1 = next env0
 
@@ -86,7 +98,7 @@ branch predicate c1 c2 branchInitialEnv =
 
     dispatch = [ ((branchInitialState, symbol),
                   (if predicate symbol then c1InitialState else c2InitialState, TM.Nop))
-               | symbol <- [TM.I, TM.O, TM.B]
+               | symbol <- allSymbols
                ]
 
     -- c1 と c2 の停止状態を共通の合流状態へつなぐ。branch はこの
@@ -94,7 +106,7 @@ branch predicate c1 c2 branchInitialEnv =
     -- 後にも接続できる。
     join = [ ((finalState, symbol), (joinState, TM.Nop))
            | finalState <- [c1FinalState, c2FinalState]
-           , symbol <- [TM.I, TM.O, TM.B]
+           , symbol <- allSymbols
            ]
 
 -- | ループ: ヘッドが preddicate を満たすとき body を実行し、それ以外のとき停止する
@@ -117,45 +129,94 @@ while predicate body whileInitialEnv =
 
     dispatch = [ ((whileInitialState, symbol),
                   (if predicate symbol then bodyInitialState else whileFinalState, TM.Nop))
-               | symbol <- [TM.I, TM.O, TM.B]
+               | symbol <- allSymbols
                ]
 
     -- 本体の終了状態から、条件を再び調べる状態へ戻る。
     loop = [ ((bodyFinalState, symbol), (whileInitialState, TM.Nop))
-           | symbol <- [TM.I, TM.O, TM.B]
+           | symbol <- allSymbols
            ]
 
 -- | 右へ1をスキップして0,空白で停止
 skip1sR :: Compiler
-skip1sR = while (== TM.I) moveR
+skip1sR = while isPlainI moveR
+  where
+    isPlainI :: TM.S -> Bool
+    isPlainI TM.I = True
+    isPlainI TM.O = False
+    isPlainI TM.B = False
+    isPlainI s    = error $ "skip1sR: unexpected symbol while skipping 1s: " ++ show s
 
 -- | 左へ1をスキップして0,空白で停止
 skip1sL :: Compiler
-skip1sL = while (== TM.I) moveL
+skip1sL = while isPlainI moveL
+  where
+    isPlainI :: TM.S -> Bool
+    isPlainI TM.I = True
+    isPlainI TM.O = False
+    isPlainI TM.B = False
+    isPlainI s    = error $ "skip1sL: unexpected symbol while skipping 1s: " ++ show s
+
 
 -- | 右へ0をスキップして1,空白で停止
 skip0sR :: Compiler
-skip0sR = while (== TM.O) moveR
+skip0sR = while isPlainO moveR
+  where
+    isPlainO :: TM.S -> Bool
+    isPlainO TM.I = False
+    isPlainO TM.O = True
+    isPlainO TM.B = False
+    isPlainO s    = error $ "skip0sR: unexpected symbol while skipping 0s: " ++ show s
 
 -- | 左へ0をスキップして1,空白で停止
 skip0sL :: Compiler
-skip0sL = while (== TM.O) moveL
+skip0sL = while isPlainO moveL
+  where
+    isPlainO :: TM.S -> Bool
+    isPlainO TM.I = False
+    isPlainO TM.O = True
+    isPlainO TM.B = False
+    isPlainO s    = error $ "skip0sL: unexpected symbol while skipping 0s: " ++ show s
 
 -- | 右へ空白をスキップして1,0で停止
 skipBlankR :: Compiler
-skipBlankR = while (== TM.B) moveR
+skipBlankR = while isPlainB moveR
+  where
+    isPlainB :: TM.S -> Bool
+    isPlainB TM.I = False
+    isPlainB TM.O = False
+    isPlainB TM.B = True
+    isPlainB s    = error $ "skipBlankR: unexpected symbol while skipping Blanks: " ++ show s
 
 -- | 左へ空白をスキップして1,0で停止
 skipBlankL :: Compiler
-skipBlankL = while (== TM.B) moveL
+skipBlankL = while isPlainB moveL
+  where
+    isPlainB :: TM.S -> Bool
+    isPlainB TM.I = False
+    isPlainB TM.O = False
+    isPlainB TM.B = True
+    isPlainB s    = error $ "skipBlankL: unexpected symbol while skipping Blanks: " ++ show s
 
 -- | 右へ1,0の列をスキップして空白で停止
 skipSeqR :: Compiler
-skipSeqR = while (/= TM.B) moveR
+skipSeqR = while (not . isPlainB) moveR
+  where
+    isPlainB :: TM.S -> Bool
+    isPlainB TM.I = False
+    isPlainB TM.O = False
+    isPlainB TM.B = True
+    isPlainB s    = error $ "skipSeqR: unexpected symbol while skipping non-Blanks: " ++ show s
 
 -- | 左へ1,0の列をスキップして空白で停止
 skipSeqL :: Compiler
-skipSeqL = while (/= TM.B) moveL
+skipSeqL = while (not . isPlainB) moveL
+  where
+    isPlainB :: TM.S -> Bool
+    isPlainB TM.I = False
+    isPlainB TM.O = False
+    isPlainB TM.B = True
+    isPlainB s    = error $ "skipSeqL: unexpected symbol while skipping non-Blanks: " ++ show s
 
 -- | 最下位桁にいる状態から1を加える
 add1 :: Compiler
