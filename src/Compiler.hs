@@ -17,8 +17,20 @@ defEnv = Env { state = 0 }
 
 type Compiler = Env -> (Env, TM.Delta)
 
-
--- | write: primitives
+{- | write: primitives
+>>> test (write I) ([B, B], B, [B, B])
+_____ --> __1__
+  ^         ^
+>>> test (write O) ([B, B], B, [B, B])
+_____ --> __0__
+  ^         ^
+>>> test (write B) ([O, O], O, [O, O])
+00000 --> 00_00
+  ^         ^
+>>> test (write B) ([I, I], I, [I, I])
+11111 --> 11_11
+  ^         ^
+-}
 write :: TM.S -> Compiler
 write s env0
   | s `elem` candidates = (env1, code)
@@ -41,10 +53,31 @@ erase d = while p (write TM.B `compose` move d)
         | c `elem` restrictedSymbols = error $ "try to erase restricted symbol: " ++ show c
         | otherwise                  = error $ "unexpected case: " ++ show c
 
--- | eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止
+{- | eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止
+>>> test eraseR ([I, I], I, [I, I])
+11111 --> 11____
+  ^            ^
+>>> test eraseR ([O, O], O, [O, O])
+00000 --> 00____
+  ^            ^
+>>> test eraseR ([B, B], B, [B, B])
+_____ --> _____
+  ^         ^
+-}
 eraseR :: Compiler
 eraseR = erase TM.R
 
+{- | eraseL: 左へ1,0を空白に置き換えながら移動し、空白で停止
+>>> test eraseL ([I, I], I, [I, I])
+11111 --> ____11
+  ^       ^
+>>> test eraseL ([O, O], O, [O, O])
+00000 --> ____00
+  ^       ^
+>>> test eraseL ([B, B], B, [B, B])
+_____ --> _____
+  ^         ^
+-}
 eraseL :: Compiler
 eraseL = erase TM.L
 
@@ -56,22 +89,56 @@ move d env0 = (env1, code)
                ]
         env1 = next env0
 
--- | moveR: 右へ1つ移動
+{- | moveR: 右へ1つ移動
+>>> test moveR ([I, I], I, [I, I])
+11111 --> 11111
+  ^          ^
+>>> test moveR ([O, O], O, [O, O])
+00000 --> 00000
+  ^          ^
+>>> test moveR ([B, B], B, [B, B])
+_____ --> _____
+  ^          ^
+-}
 moveR :: Compiler
 moveR = move TM.R
 
--- | moveL: 左へ1つ移動
+{- | moveL: 左へ1つ移動
+>>> test moveL ([I, I], I, [I, I])
+11111 --> 11111
+  ^        ^
+>>> test moveL ([O, O], O, [O, O])
+00000 --> 00000
+  ^        ^
+>>> test moveL ([B, B], B, [B, B])
+_____ --> _____
+  ^        ^
+-}
 moveL :: Compiler
 moveL = move TM.L
 
--- | 逐次実行: c1の停止状態にc2を続けて実行する
+{- | 逐次実行: c1の停止状態にc2を続けて実行する
+>>> test (moveR `compose` write I) ([B, B], B, [B, B])
+_____ --> ___1_
+  ^          ^
+>>> test (moveL `compose` write O) ([B, B], B, [B, B])
+_____ --> _0___
+  ^        ^
+-}
 compose :: Compiler -> Compiler -> Compiler
 (c1 `compose` c2) env0 = (env2, code1 ++ code2)
   where
     (env1, code1) = c1 env0
     (env2, code2) = c2 env1
 
--- | 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
+{- | 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
+>>> test (branch (== TM.I) (write O) (write I)) ([B, B], I, [B, B])
+__1__ --> __0__
+  ^         ^
+>>> test (branch (== TM.I) (write O) (write I)) ([B, B], O, [B, B])
+__0__ --> __1__
+  ^         ^
+-}
 branch :: (S -> Bool) -> Compiler -> Compiler -> Compiler
 branch predicate c1 c2 branchInitialEnv =
   (joinEnv, dispatch ++ c1Code ++ c2Code ++ join)
@@ -109,7 +176,17 @@ branch predicate c1 c2 branchInitialEnv =
            , symbol <- allSymbols
            ]
 
--- | ループ: ヘッドが preddicate を満たすとき body を実行し、それ以外のとき停止する
+{- | ループ: ヘッドが preddicate を満たすとき body を実行し、それ以外のとき停止する
+>>> test (while (/= TM.B) moveR) ([I, I], I, [I, I])
+11111 --> 11111_
+  ^            ^
+>>> test (while (/= TM.B) moveR) ([I, I], I, [I, B])
+1111_ --> 1111_
+  ^           ^
+>>> test (while (/= TM.B) moveR) ([I, I], B, [I, I])
+11_11 --> 11_11
+  ^         ^
+-}
 while :: (S -> Bool) -> Compiler -> Compiler
 while predicate body whileInitialEnv =
   (whileFinalEnv, dispatch ++ bodyCode ++ loop)
@@ -137,7 +214,17 @@ while predicate body whileInitialEnv =
            | symbol <- allSymbols
            ]
 
--- | 右へ1をスキップして0,空白で停止
+{- | 右へ1をスキップして0,空白で停止
+>>> test skip1sR ([I, I], I, [I, I])
+11111 --> 11111_
+  ^            ^
+>>> test skip1sR ([I, I], I, [O, O])
+11100 --> 11100
+  ^          ^
+>>> test skip1sR ([I, I], I, [B, B])
+111__ --> 111__
+  ^          ^
+-}
 skip1sR :: Compiler
 skip1sR = while isPlainI moveR
   where
@@ -147,7 +234,17 @@ skip1sR = while isPlainI moveR
     isPlainI TM.B = False
     isPlainI s    = error $ "skip1sR: unexpected symbol while skipping 1s: " ++ show s
 
--- | 左へ1をスキップして0,空白で停止
+{- | 左へ1をスキップして0,空白で停止
+>>> test skip1sL ([I, I], I, [I, I])
+11111 --> _11111
+  ^       ^
+>>> test skip1sL ([I, I], I, [O, O])
+11100 --> _11100
+  ^       ^
+>>> test skip1sL ([I, I], I, [B, B])
+111__ --> _111__
+  ^       ^
+-}
 skip1sL :: Compiler
 skip1sL = while isPlainI moveL
   where
@@ -158,7 +255,17 @@ skip1sL = while isPlainI moveL
     isPlainI s    = error $ "skip1sL: unexpected symbol while skipping 1s: " ++ show s
 
 
--- | 右へ0をスキップして1,空白で停止
+{- | 右へ0をスキップして1,空白で停止
+>>> test skip0sR ([O, O], O, [O, O])
+00000 --> 00000_
+  ^            ^
+>>> test skip0sR ([O, O], O, [I, I])
+00011 --> 00011
+  ^          ^
+>>> test skip0sR ([O, O], O, [B, B])
+000__ --> 000__
+  ^          ^
+-}
 skip0sR :: Compiler
 skip0sR = while isPlainO moveR
   where
@@ -168,7 +275,17 @@ skip0sR = while isPlainO moveR
     isPlainO TM.B = False
     isPlainO s    = error $ "skip0sR: unexpected symbol while skipping 0s: " ++ show s
 
--- | 左へ0をスキップして1,空白で停止
+{- | 左へ0をスキップして1,空白で停止
+>>> test skip0sL ([O, O], O, [O, O])
+00000 --> _00000
+  ^       ^
+>>> test skip0sL ([O, O], O, [I, I])
+00011 --> _00011
+  ^       ^
+>>> test skip0sL ([O, O], O, [B, B])
+000__ --> _000__
+  ^       ^
+-}
 skip0sL :: Compiler
 skip0sL = while isPlainO moveL
   where
@@ -178,7 +295,20 @@ skip0sL = while isPlainO moveL
     isPlainO TM.B = False
     isPlainO s    = error $ "skip0sL: unexpected symbol while skipping 0s: " ++ show s
 
--- | 右へ空白をスキップして1,0で停止
+{- | 右へ空白をスキップして1,0で停止
+>>> test skipBlankR ([B, B], B, [I, I])
+___11 --> ___11
+  ^          ^
+>>> test skipBlankR ([B, B], B, [O, O])
+___00 --> ___00
+  ^          ^
+>>> test skipBlankR ([B, B], I, [B, B])
+__1__ --> __1__
+  ^         ^
+>>> test skipBlankR ([B, B], O, [B, B])
+__0__ --> __0__
+  ^         ^
+-}
 skipBlankR :: Compiler
 skipBlankR = while isPlainB moveR
   where
@@ -188,7 +318,20 @@ skipBlankR = while isPlainB moveR
     isPlainB TM.B = True
     isPlainB s    = error $ "skipBlankR: unexpected symbol while skipping Blanks: " ++ show s
 
--- | 左へ空白をスキップして1,0で停止
+{- | 左へ空白をスキップして1,0で停止
+>>> test skipBlankL ([I, I], B, [B, B])
+11___ --> 11___
+  ^        ^
+>>> test skipBlankL ([O, O], B, [B, B])
+00___ --> 00___
+  ^        ^
+>>> test skipBlankL ([I, I], I, [B, B])
+111__ --> 111__
+  ^         ^
+>>> test skipBlankL ([O, O], O, [B, B])
+000__ --> 000__
+  ^         ^
+-}
 skipBlankL :: Compiler
 skipBlankL = while isPlainB moveL
   where
@@ -198,7 +341,26 @@ skipBlankL = while isPlainB moveL
     isPlainB TM.B = True
     isPlainB s    = error $ "skipBlankL: unexpected symbol while skipping Blanks: " ++ show s
 
--- | 右へ1,0の列をスキップして空白で停止
+{- | 右へ1,0の列をスキップして空白で停止
+>>> test skipSeqR ([I, I], I, [I, I])
+11111 --> 11111_
+  ^            ^
+>>> test skipSeqR ([O, O], O, [O, O])
+00000 --> 00000_
+  ^            ^
+>>> test skipSeqR ([I, I], I, [O, O])
+11100 --> 11100_
+  ^            ^
+>>> test skipSeqR ([O, O], O, [I, I])
+00011 --> 00011_
+  ^            ^
+>>> test skipSeqR ([I, I], B, [O, O])
+11_00 --> 11_00
+  ^         ^
+>>> test skipSeqR ([O, O], B, [I, I])
+00_11 --> 00_11
+  ^         ^
+-}
 skipSeqR :: Compiler
 skipSeqR = while (not . isPlainB) moveR
   where
@@ -208,7 +370,26 @@ skipSeqR = while (not . isPlainB) moveR
     isPlainB TM.B = True
     isPlainB s    = error $ "skipSeqR: unexpected symbol while skipping non-Blanks: " ++ show s
 
--- | 左へ1,0の列をスキップして空白で停止
+{- | 左へ1,0の列をスキップして空白で停止
+>>> test skipSeqL ([I, I], I, [I, I])
+11111 --> _11111
+  ^       ^
+>>> test skipSeqL ([O, O], O, [O, O])
+00000 --> _00000
+  ^       ^
+>>> test skipSeqL ([I, I], I, [O, O])
+11100 --> _11100
+  ^       ^
+>>> test skipSeqL ([O, O], O, [I, I])
+00011 --> _00011
+  ^       ^
+>>> test skipSeqL ([I, I], B, [O, O])
+11_00 --> 11_00
+  ^         ^
+>>> test skipSeqL ([O, O], B, [I, I])
+00_11 --> 00_11
+  ^         ^
+-}
 skipSeqL :: Compiler
 skipSeqL = while (not . isPlainB) moveL
   where
@@ -218,7 +399,17 @@ skipSeqL = while (not . isPlainB) moveL
     isPlainB TM.B = True
     isPlainB s    = error $ "skipSeqL: unexpected symbol while skipping non-Blanks: " ++ show s
 
--- | 最下位桁にいる状態から1を加える
+{- | 最下位桁にいる状態から1を加える
+>>> test add1 ([I, I], I, [B, B])
+111__ --> 1000__
+  ^       ^
+>>> test add1 ([O, O], O, [B, B])
+000__ --> 001__
+  ^         ^
+>>> test add1 ([O, I], O, [B, B])
+100__ --> 101__
+  ^         ^
+-}
 add1 :: Compiler
 add1 env0 = (env2, code)
   where
@@ -234,7 +425,17 @@ add1 env0 = (env2, code)
     env1 = next env0
     env2 = next env1
 
--- | 最下位桁にいる状態から1を減らす
+{- | 最下位桁にいる状態から1を減らす
+>>> test sub1 ([I, I], I, [B, B])
+111__ --> 110__
+  ^         ^
+>>> test sub1 ([O, I], O, [B, B])
+100__ --> 011__
+  ^       ^
+>>> test sub1 ([O, O], I, [B, B])
+001__ --> 000__
+  ^         ^
+-}
 sub1 :: Compiler
 sub1 env0 = (env2, code)
   where
@@ -265,11 +466,40 @@ bin digit op = initBackup `compose` backHome `compose` skip0sL `compose` while (
                                 ]
     recover    = foldl1 compose [moveR, skipSeqR, skipBlankR, skipSeqR, moveL, plus', moveR, eraseR, skipBlankL]
 
--- | 非破壊加算
+{- | 非破壊加算
+>>> test (plus 3) ([I, I, B, I, I], I, [])
+11_111 --> 1010_111
+     ^            ^
+>>> test (plus 3) ([O, O, B, I, I], O, [])
+11_000 --> 11_000
+     ^          ^
+>>> test (plus 3) ([O, I, B, I, I], O, [])
+11_100 --> 111_100
+     ^           ^
+>>> test (plus 3) ([B, O, O], I, [])
+00_1 --> 01_1
+   ^        ^
+>>> test (plus 3) ([B, O, O], O, [])
+00_0 --> 00_0
+   ^        ^
+-}
 plus :: Int -> Compiler
 plus digit = bin digit add1
 
--- | 非破壊的減算
+{- | 非破壊的減算
+>>> test (minus 3) ([I, B, I, I, I], I, [])
+111_11 --> 100_11
+     ^          ^
+>>> test (minus 3) ([O, B, I, I, I], O, [])
+111_00 --> 111_00
+     ^          ^
+>>> test (minus 3) ([O, B, I, I, I], I, [])
+111_01 --> 110_01
+     ^          ^
+>>> test (minus 3) ([B, O, I], I, [])
+10_1 --> 01_1
+   ^        ^
+-}
 minus :: Int -> Compiler
 minus digit = bin digit sub1
 
@@ -284,11 +514,37 @@ bin' op = skip0sL `compose` while (/= TM.B) body
     back  = foldl1 compose [skipSeqR, skipBlankR, skipSeqR, moveL]
     step1 = foldl1 compose [sub1L, skipBlankL, op, back]
 
--- | 破壊的加算
+{- | 破壊的加算
+>>> test plus' ([I, I, B, I, I], I, [])
+11_111 --> 1010_000
+     ^         ^
+>>> test plus' ([O, O, B, I, I], O, [])
+11_000 --> 11_000
+     ^       ^
+>>> test plus' ([O, I, B, I, I], O, [])
+11_100 --> 111_000
+     ^        ^
+>>> test plus' ([B, O, O], I, [])
+00_1 --> 01_0
+   ^       ^
+-}
 plus' :: Compiler
 plus' = bin' add1
 
--- | 破壊的減算
+{- | 破壊的減算
+>>> test minus' ([I, B, I, I, I], I, [])
+111_11 --> 100_00
+     ^        ^
+>>> test minus' ([O, B, I, I, I], O, [])
+111_00 --> 111_00
+     ^        ^
+>>> test minus' ([O, B, I, I, I], I, [])
+111_01 --> 110_00
+     ^        ^
+>>> test minus' ([B, O, I], I, [])
+10_1 --> 01_0
+   ^       ^
+-}
 minus' :: Compiler
 minus' = bin' sub1
 

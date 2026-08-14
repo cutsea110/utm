@@ -32,3 +32,11 @@ executable utm
     build-depends:    base ^>=4.22.0.0, utm
     hs-source-dirs:   app
     default-language: GHC2024
+
+test-suite doctest
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          Doctest.hs
+    build-depends:    base ^>=4.22.0.0, doctest
+    hs-source-dirs:   test
+    default-language: GHC2024
