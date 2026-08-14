@@ -117,6 +117,28 @@ _____ --> _____
 moveL :: Compiler
 moveL = move TM.L
 
+{- | moveTo: 指定方向で最初に見つかるシンボルまで移動する
+>>> test (moveTo (R, SP)) ([I, I], I, [B, B, SP, I])
+111__#1 --> 111__#1
+  ^              ^
+>>> test (moveTo (L, SP)) ([I, I, B, B, SP], I, [])
+#__111 --> #__111
+     ^     ^
+-}
+moveTo :: (TM.D, TM.S) -> Compiler
+moveTo (direction, symbol) = while (/= symbol) (move direction)
+
+{- | moveAfter: 指定方向で最初に見つかるシンボルの右隣へ移動する
+>>> test (moveAfter (R, SP)) ([I, I], I, [B, B, SP, I])
+111__#1 --> 111__#1
+  ^               ^
+>>> test (moveAfter (L, SP)) ([I, I, B, B, SP], I, [])
+#__111 --> #__111
+     ^      ^
+-}
+moveAfter :: (TM.D, TM.S) -> Compiler
+moveAfter target = moveTo target `compose` moveR
+
 {- | 逐次実行: c1の停止状態にc2を続けて実行する
 >>> test (moveR `compose` write I) ([B, B], B, [B, B])
 _____ --> ___1_
@@ -399,19 +421,19 @@ skipSeqL = while (not . isPlainB) moveL
     isPlainB TM.B = True
     isPlainB s    = error $ "skipSeqL: unexpected symbol while skipping non-Blanks: " ++ show s
 
-{- | copy: 非破壊的コピー
->>> test (copy (R, SP)) ([I, I], I, [B, B, SP])
+{- | copyTo: 非破壊的コピー
+>>> test (copyTo (R, SP)) ([I, I], I, [B, B, SP])
 111__# --> 111__#111
   ^        ^
->>> test (copy (R, SP)) ([O, O], O, [B, B, SP])
+>>> test (copyTo (R, SP)) ([O, O], O, [B, B, SP])
 000__# --> 000__#000
   ^        ^
->>> test (copy (L, SP)) ([I, O, I, B, B, B, B, SP], I, [B, B, SP])
+>>> test (copyTo (L, SP)) ([I, O, I, B, B, B, B, SP], I, [B, B, SP])
 #____1011__# --> #10111011__#
         ^             ^
 -}
-copy :: (TM.D, TM.S) -> Compiler
-copy (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` restoreSource
+copyTo :: (TM.D, TM.S) -> Compiler
+copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` restoreSource
   where
     toMostSignificant :: Compiler
     toMostSignificant = skipSeqL `compose` moveR
@@ -430,10 +452,7 @@ copy (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` 
 
     copyMarked :: TM.S -> TM.S -> Compiler
     copyMarked sourceMark bit
-      = foldl1 compose [write sourceMark, seekMarker, moveR, skipSeqR, write bit, nextSource]
-
-    seekMarker :: Compiler
-    seekMarker = while (/= marker) (move markerDirection)
+      = foldl1 compose [write sourceMark, moveAfter (markerDirection, marker), skipSeqR, write bit, nextSource]
 
     seekMarkedSource :: Compiler
     seekMarkedSource = while (not . isMark) (move (opposite markerDirection))
@@ -453,7 +472,7 @@ copy (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` 
     isPlainBit TM.I = True
     isPlainBit TM.O = True
     isPlainBit TM.B = False
-    isPlainBit s    = error $ "copy: unexpected source symbol: " ++ show s
+    isPlainBit s    = error $ "copyTo: unexpected source symbol: " ++ show s
 
     isMark :: TM.S -> Bool
     isMark TM.MI = True
@@ -469,21 +488,21 @@ copy (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` 
 空白 (`B`) で、不一致時は食い違った桁（または余った桁）の `I` / `O` で
 停止する。終了時には、両方の列を含むテープは入力時と同じ状態へ復元される。
 
->>> test (match (R, SP)) ([O, I], I, [B, B, SP, I, O, I])
+>>> test (matchTo (R, SP)) ([O, I], I, [B, B, SP, I, O, I])
 101__#101 --> 101__#101_
   ^                    ^
->>> test (match (L, SP)) ([O, I, B, I, O, I, SP], O, [])
+>>> test (matchTo (L, SP)) ([O, I, B, I, O, I, SP], O, [])
 #101_100 --> #101_100
        ^        ^
->>> test (match (R, SP)) ([O, I], I, [B, B, SP, I, O])
+>>> test (matchTo (R, SP)) ([O, I], I, [B, B, SP, I, O])
 101__#10 --> 101__#10
   ^            ^
->>> test (match (R, SP)) ([I], O, [B, B, SP, I, O, I])
+>>> test (matchTo (R, SP)) ([I], O, [B, B, SP, I, O, I])
 10__#101 --> 10__#101
  ^                  ^
 -}
-match :: (TM.D, TM.S) -> Compiler
-match (markerDirection, marker) = toMostSignificant `compose` compareBits `compose` finish
+matchTo :: (TM.D, TM.S) -> Compiler
+matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `compose` finish
   where
     toMostSignificant :: Compiler
     toMostSignificant = skipSeqL `compose` moveR
@@ -503,8 +522,7 @@ match (markerDirection, marker) = toMostSignificant `compose` compareBits `compo
     compareMarked :: TM.S -> TM.S -> TM.S -> Compiler
     compareMarked sourceMark targetMark bit = foldl1 compose
       [ write sourceMark
-      , seekMarker
-      , moveR
+      , moveAfter (markerDirection, marker)
       , skipTargetMarks
       , branch (== bit)
           (write targetMark `compose` restoreSource bit `compose` moveR)
@@ -517,8 +535,7 @@ match (markerDirection, marker) = toMostSignificant `compose` compareBits `compo
 
     sourceLonger :: Compiler
     sourceLonger = foldl1 compose
-      [ seekMarker
-      , moveR
+      [ moveAfter (markerDirection, marker)
       , restoreTarget
       , seekSourceMark
       , restoreSourceMark
@@ -528,16 +545,14 @@ match (markerDirection, marker) = toMostSignificant `compose` compareBits `compo
     targetMismatch = foldl1 compose
       [ seekSourceMark
       , restoreSourceMark
-      , seekMarker
-      , moveR
+      , moveAfter (markerDirection, marker)
       , restoreTarget
       , moveL
       ]
 
     finishAfterSource :: Compiler
     finishAfterSource = foldl1 compose
-      [ seekMarker
-      , moveR
+      [ moveAfter (markerDirection, marker)
       , skipTargetMarks
       , branch (== TM.B) cleanupFromTarget targetLonger
       ]
@@ -546,12 +561,6 @@ match (markerDirection, marker) = toMostSignificant `compose` compareBits `compo
     targetLonger = branch (== TM.I) (write TM.HI) (write TM.HO)
                  `compose` cleanupFromTarget
                  `compose` moveL
-
-    seekMarker :: Compiler
-    seekMarker = while (/= marker) (move markerDirection)
-
-    seekMarkerFromTarget :: Compiler
-    seekMarkerFromTarget = while (/= marker) moveL
 
     seekSourceMark :: Compiler
     seekSourceMark = while (not . isSourceMark) (move (opposite markerDirection))
@@ -572,7 +581,7 @@ match (markerDirection, marker) = toMostSignificant `compose` compareBits `compo
     restoreBit = branch (== TM.HI) (write TM.I) (write TM.O) `compose` moveR
 
     cleanupFromTarget :: Compiler
-    cleanupFromTarget = seekMarkerFromTarget `compose` moveR `compose` restoreTarget
+    cleanupFromTarget = moveAfter (TM.L, marker) `compose` restoreTarget
 
     continueSource :: TM.S -> Bool
     continueSource TM.I  = True
@@ -582,7 +591,7 @@ match (markerDirection, marker) = toMostSignificant `compose` compareBits `compo
     continueSource TM.MO = False
     continueSource TM.HI = False
     continueSource TM.HO = False
-    continueSource s     = error $ "match: unexpected source symbol: " ++ show s
+    continueSource s     = error $ "matchTo: unexpected source symbol: " ++ show s
 
     isSourceMark :: TM.S -> Bool
     isSourceMark TM.MI = True
@@ -595,7 +604,7 @@ match (markerDirection, marker) = toMostSignificant `compose` compareBits `compo
     isTargetMark TM.I  = False
     isTargetMark TM.O  = False
     isTargetMark TM.B  = False
-    isTargetMark s     = error $ "match: unexpected target symbol: " ++ show s
+    isTargetMark s     = error $ "matchTo: unexpected target symbol: " ++ show s
 
     opposite :: TM.D -> TM.D
     opposite TM.L = TM.R
