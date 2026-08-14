@@ -17,6 +17,91 @@ defEnv = Env { state = 0 }
 
 type Compiler = Env -> (Env, TM.Delta)
 
+{- | 逐次実行: c1の停止状態にc2を続けて実行する
+>>> test (moveR `compose` write I) ([B, B], B, [B, B])
+_____ --> ___1_
+  ^          ^
+>>> test (moveL `compose` write O) ([B, B], B, [B, B])
+_____ --> _0___
+  ^        ^
+-}
+compose :: Compiler -> Compiler -> Compiler
+(c1 `compose` c2) env0 = (env2, code1 ++ code2)
+  where
+    (env1, code1) = c1 env0
+    (env2, code2) = c2 env1
+
+{- | 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
+>>> test (branch (== TM.I) (write O) (write I)) ([B, B], I, [B, B])
+__1__ --> __0__
+  ^         ^
+>>> test (branch (== TM.I) (write O) (write I)) ([B, B], O, [B, B])
+__0__ --> __1__
+  ^         ^
+-}
+branch :: (S -> Bool) -> Compiler -> Compiler -> Compiler
+branch predicate c1 c2 branchInitialEnv =
+  (joinEnv, dispatch ++ c1Code ++ c2Code ++ join)
+  where
+    branchInitialState = get branchInitialEnv
+
+    c1InitialEnv = next branchInitialEnv
+    (c1FinalEnv, c1Code) = c1 c1InitialEnv
+    c1InitialState = get c1InitialEnv
+    c1FinalState = get c1FinalEnv
+
+    c2InitialEnv = next c1FinalEnv
+    (c2FinalEnv, c2Code) = c2 c2InitialEnv
+    c2InitialState = get c2InitialEnv
+    c2FinalState = get c2FinalEnv
+
+    joinEnv = next c2FinalEnv
+    joinState = get joinEnv
+
+    dispatch = [ ((branchInitialState, symbol),
+                  (if predicate symbol then c1InitialState else c2InitialState, TM.Nop))
+               | symbol <- allSymbols
+               ]
+
+    join = [ ((finalState, symbol), (joinState, TM.Nop))
+           | finalState <- [c1FinalState, c2FinalState]
+           , symbol <- allSymbols
+           ]
+
+{- | ループ: ヘッドがpredicateを満たすときbodyを実行し、それ以外のとき停止する
+>>> test (while (/= TM.B) moveR) ([I, I], I, [I, I])
+11111 --> 11111_
+  ^            ^
+>>> test (while (/= TM.B) moveR) ([I, I], I, [I, B])
+1111_ --> 1111_
+  ^           ^
+>>> test (while (/= TM.B) moveR) ([I, I], B, [I, I])
+11_11 --> 11_11
+  ^         ^
+-}
+while :: (S -> Bool) -> Compiler -> Compiler
+while predicate body whileInitialEnv =
+  (whileFinalEnv, dispatch ++ bodyCode ++ loop)
+  where
+    whileInitialState = get whileInitialEnv
+
+    bodyInitialEnv = next whileInitialEnv
+    (bodyFinalEnv, bodyCode) = body bodyInitialEnv
+    bodyInitialState = get bodyInitialEnv
+    bodyFinalState = get bodyFinalEnv
+
+    whileFinalEnv = next bodyFinalEnv
+    whileFinalState = get whileFinalEnv
+
+    dispatch = [ ((whileInitialState, symbol),
+                  (if predicate symbol then bodyInitialState else whileFinalState, TM.Nop))
+               | symbol <- allSymbols
+               ]
+
+    loop = [ ((bodyFinalState, symbol), (whileInitialState, TM.Nop))
+           | symbol <- allSymbols
+           ]
+
 {- | write: primitives
 >>> test (write I) ([B, B], B, [B, B])
 _____ --> __1__
@@ -138,103 +223,6 @@ moveTo (direction, symbol) = while (/= symbol) (move direction)
 -}
 moveAfter :: (TM.D, TM.S) -> Compiler
 moveAfter target = moveTo target `compose` moveR
-
-{- | 逐次実行: c1の停止状態にc2を続けて実行する
->>> test (moveR `compose` write I) ([B, B], B, [B, B])
-_____ --> ___1_
-  ^          ^
->>> test (moveL `compose` write O) ([B, B], B, [B, B])
-_____ --> _0___
-  ^        ^
--}
-compose :: Compiler -> Compiler -> Compiler
-(c1 `compose` c2) env0 = (env2, code1 ++ code2)
-  where
-    (env1, code1) = c1 env0
-    (env2, code2) = c2 env1
-
-{- | 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
->>> test (branch (== TM.I) (write O) (write I)) ([B, B], I, [B, B])
-__1__ --> __0__
-  ^         ^
->>> test (branch (== TM.I) (write O) (write I)) ([B, B], O, [B, B])
-__0__ --> __1__
-  ^         ^
--}
-branch :: (S -> Bool) -> Compiler -> Compiler -> Compiler
-branch predicate c1 c2 branchInitialEnv =
-  (joinEnv, dispatch ++ c1Code ++ c2Code ++ join)
-  where
-    -- branchInitialState で条件を調べ、c1 または c2 の開始状態へ進む。
-    -- 両方の終了状態は joinState に集め、branch の終了状態とする。
-    branchInitialState = get branchInitialEnv
-
-    -- c1 に渡す開始状態と、c1 が返す終了状態。
-    c1InitialEnv = next branchInitialEnv
-    (c1FinalEnv, c1Code) = c1 c1InitialEnv
-    c1InitialState = get c1InitialEnv
-    c1FinalState = get c1FinalEnv
-
-    -- c1 の終了状態とは別の状態を、c2 の開始状態として確保する。
-    c2InitialEnv = next c1FinalEnv
-    (c2FinalEnv, c2Code) = c2 c2InitialEnv
-    c2InitialState = get c2InitialEnv
-    c2FinalState = get c2FinalEnv
-
-    -- 二つの分岐を合流させる停止状態。後続の compose はここから始まる。
-    joinEnv = next c2FinalEnv
-    joinState = get joinEnv
-
-    dispatch = [ ((branchInitialState, symbol),
-                  (if predicate symbol then c1InitialState else c2InitialState, TM.Nop))
-               | symbol <- allSymbols
-               ]
-
-    -- c1 と c2 の停止状態を共通の合流状態へつなぐ。branch はこの
-    -- 合流状態を返すため、compose で後続のコンパイラをどちらの分岐の
-    -- 後にも接続できる。
-    join = [ ((finalState, symbol), (joinState, TM.Nop))
-           | finalState <- [c1FinalState, c2FinalState]
-           , symbol <- allSymbols
-           ]
-
-{- | ループ: ヘッドが preddicate を満たすとき body を実行し、それ以外のとき停止する
->>> test (while (/= TM.B) moveR) ([I, I], I, [I, I])
-11111 --> 11111_
-  ^            ^
->>> test (while (/= TM.B) moveR) ([I, I], I, [I, B])
-1111_ --> 1111_
-  ^           ^
->>> test (while (/= TM.B) moveR) ([I, I], B, [I, I])
-11_11 --> 11_11
-  ^         ^
--}
-while :: (S -> Bool) -> Compiler -> Compiler
-while predicate body whileInitialEnv =
-  (whileFinalEnv, dispatch ++ bodyCode ++ loop)
-  where
-    -- whileInitialState で条件を調べ、条件を満たすと本体を実行する。
-    whileInitialState = get whileInitialEnv
-
-    -- 本体に渡す開始状態と、本体が返す終了状態。
-    bodyInitialEnv = next whileInitialEnv
-    (bodyFinalEnv, bodyCode) = body bodyInitialEnv
-    bodyInitialState = get bodyInitialEnv
-    bodyFinalState = get bodyFinalEnv
-
-    -- 条件が偽のときに停止する状態。後続の compose はここから始まる。
-    whileFinalEnv = next bodyFinalEnv
-    whileFinalState = get whileFinalEnv
-
-    dispatch = [ ((whileInitialState, symbol),
-                  (if predicate symbol then bodyInitialState else whileFinalState, TM.Nop))
-               | symbol <- allSymbols
-               ]
-
-    -- 本体の終了状態から、条件を再び調べる状態へ戻る。
-    loop = [ ((bodyFinalState, symbol), (whileInitialState, TM.Nop))
-           | symbol <- allSymbols
-           ]
 
 {- | 右へ1,0の列をスキップして空白で停止
 >>> test skipSeqR ([I, I], I, [I, I])
