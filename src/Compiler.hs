@@ -399,6 +399,71 @@ skipSeqL = while (not . isPlainB) moveL
     isPlainB TM.B = True
     isPlainB s    = error $ "skipSeqL: unexpected symbol while skipping non-Blanks: " ++ show s
 
+{- | copy: 非破壊的コピー
+>>> test (copy (R, SP)) ([I, I], I, [B, B, SP])
+111__# --> 111__#111
+  ^        ^
+>>> test (copy (R, SP)) ([O, O], O, [B, B, SP])
+000__# --> 000__#000
+  ^        ^
+>>> test (copy (L, SP)) ([I, O, I, B, B, B, B, SP], I, [B, B, SP])
+#____1011__# --> #10111011__#
+        ^             ^
+-}
+copy :: (TM.D, TM.S) -> Compiler
+copy (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` restoreSource
+  where
+    toMostSignificant :: Compiler
+    toMostSignificant = skipSeqL `compose` moveR
+
+    copyBits :: Compiler
+    copyBits = while isPlainBit copyBit
+
+    copyBit :: Compiler
+    copyBit = branch (== TM.I) copyI copyO
+
+    copyI :: Compiler
+    copyI = copyMarked TM.MI TM.I
+
+    copyO :: Compiler
+    copyO = copyMarked TM.MO TM.O
+
+    copyMarked :: TM.S -> TM.S -> Compiler
+    copyMarked sourceMark bit
+      = foldl1 compose [write sourceMark, seekMarker, moveR, skipSeqR, write bit, nextSource]
+
+    seekMarker :: Compiler
+    seekMarker = while (/= marker) (move markerDirection)
+
+    seekMarkedSource :: Compiler
+    seekMarkedSource = while (not . isMark) (move (opposite markerDirection))
+
+    nextSource :: Compiler
+    nextSource = case markerDirection of
+      TM.R -> seekMarkedSource `compose` moveR
+      TM.L -> seekMarkedSource `compose` while isMark moveR
+
+    restoreSource :: Compiler
+    restoreSource = moveL `compose` while isMark restoreBit `compose` moveR
+
+    restoreBit :: Compiler
+    restoreBit = branch (== TM.MI) (write TM.I) (write TM.O) `compose` moveL
+
+    isPlainBit :: TM.S -> Bool
+    isPlainBit TM.I = True
+    isPlainBit TM.O = True
+    isPlainBit TM.B = False
+    isPlainBit s    = error $ "copy: unexpected source symbol: " ++ show s
+
+    isMark :: TM.S -> Bool
+    isMark TM.MI = True
+    isMark TM.MO = True
+    isMark _     = False
+
+    opposite :: TM.D -> TM.D
+    opposite TM.L = TM.R
+    opposite TM.R = TM.L
+
 {- | 最下位桁にいる状態から1を加える
 >>> test add1 ([I, I], I, [B, B])
 111__ --> 1000__
