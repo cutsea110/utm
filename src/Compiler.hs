@@ -140,6 +140,27 @@ moveVirtualHeadL =
       where
         finish newHead = write newHead `compose` moveR `compose` write oldSymbol `compose` moveL
 
+{-| 仮想ヘッドを右へ1セル移動する。
+右側の物理テープは空白で無限に拡張されるため境界検査は不要だが、仮想テープ内の記号は検査する。
+
+>>> eval (S 0, snd (moveVirtualHeadR defEnv)) ([UTM.VT], UTM.HI, [UTM.O])
+([I,VT],HO,[])
+-}
+moveVirtualHeadR :: Compiler
+moveVirtualHeadR =
+  branch (== UTM.HB) (moveHeadRight UTM.B)
+    (branch (== UTM.HI) (moveHeadRight UTM.I)
+      (branch (== UTM.HO) (moveHeadRight UTM.O)
+        (halt UTM.InvalidVirtualTape)))
+  where
+    moveHeadRight oldSymbol = moveR `compose`
+      branch (== UTM.B) (finish UTM.HB)
+        (branch (== UTM.I) (finish UTM.HI)
+          (branch (== UTM.O) (finish UTM.HO)
+            (halt UTM.InvalidVirtualTape)))
+      where
+        finish newHead = write newHead `compose` moveL `compose` write oldSymbol `compose` moveR
+
 {-| write: primitives
 >>> test (write I) ([B, B], B, [B, B])
 _____ --> __1__
