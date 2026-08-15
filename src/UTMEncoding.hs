@@ -49,12 +49,12 @@ encodeSymbol tm s = case lookup s dict of
 
 encodeHead :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
            => tm -> TM.Symbol tm -> UTM.S
-encodeHead tm s = case lookup s dict of
-  Just code -> code
-  Nothing   -> error "encodeHead: symbol not found in dictionary"
-  where dict | length twoSymbols <= 2 = zip twoSymbols [UTM.HO, UTM.HI] ++ [(TM.blankSymbol tm, UTM.HB)]
-             | otherwise = error "encodeHead: target TM has more than 2 non-blank symbols"
-        twoSymbols = TM.symbols tm \\ [TM.blankSymbol tm]
+encodeHead tm = headSymbol . encodeSymbol tm
+  where
+    headSymbol UTM.B = UTM.HB
+    headSymbol UTM.I = UTM.HI
+    headSymbol UTM.O = UTM.HO
+    headSymbol s     = error $ "encodeHead: invalid symbol for head: " ++ show s
 
 encodeDirection :: UTM.D -> UTM.S
 encodeDirection UTM.L = UTM.O
