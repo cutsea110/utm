@@ -1,21 +1,21 @@
 module Compiler where
 
-import TM (Q(..), Delta, A(..), S(..), D(..), Tape, showTape
-          , allSymbols, readOnlySymbols, writableSymbols, restrictedSymbols)
+import UTM (Q(..), Delta, A(..), S(..), D(..), Tape, showTape
+           , allSymbols, readOnlySymbols, writableSymbols, restrictedSymbols)
 import Eval (eval)
 
 data Env = Env { state :: Int
                }
          deriving (Show, Eq)
 
-get :: Env -> TM.Q
-get env = TM.S (state env)
+get :: Env -> UTM.Q
+get env = UTM.S (state env)
 next :: Env -> Env
 next env = env { state = state env + 1 }
 defEnv :: Env
 defEnv = Env { state = 0 }
 
-type Compiler = Env -> (Env, TM.Delta)
+type Compiler = Env -> (Env, UTM.Delta)
 
 {- | 逐次実行: c1の停止状態にc2を続けて実行する
 >>> test (moveR `compose` write I) ([B, B], B, [B, B])
@@ -32,10 +32,10 @@ compose :: Compiler -> Compiler -> Compiler
     (env2, code2) = c2 env1
 
 {- | 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
->>> test (branch (== TM.I) (write O) (write I)) ([B, B], I, [B, B])
+>>> test (branch (== UTM.I) (write O) (write I)) ([B, B], I, [B, B])
 __1__ --> __0__
   ^         ^
->>> test (branch (== TM.I) (write O) (write I)) ([B, B], O, [B, B])
+>>> test (branch (== UTM.I) (write O) (write I)) ([B, B], O, [B, B])
 __0__ --> __1__
   ^         ^
 -}
@@ -59,23 +59,23 @@ branch predicate c1 c2 branchInitialEnv =
     joinState = get joinEnv
 
     dispatch = [ ((branchInitialState, symbol),
-                  (if predicate symbol then c1InitialState else c2InitialState, TM.Nop))
+                  (if predicate symbol then c1InitialState else c2InitialState, UTM.Nop))
                | symbol <- allSymbols
                ]
 
-    join = [ ((finalState, symbol), (joinState, TM.Nop))
+    join = [ ((finalState, symbol), (joinState, UTM.Nop))
            | finalState <- [c1FinalState, c2FinalState]
            , symbol <- allSymbols
            ]
 
 {- | ループ: ヘッドがpredicateを満たすときbodyを実行し、それ以外のとき停止する
->>> test (while (/= TM.B) moveR) ([I, I], I, [I, I])
+>>> test (while (/= UTM.B) moveR) ([I, I], I, [I, I])
 11111 --> 11111_
   ^            ^
->>> test (while (/= TM.B) moveR) ([I, I], I, [I, B])
+>>> test (while (/= UTM.B) moveR) ([I, I], I, [I, B])
 1111_ --> 1111_
   ^           ^
->>> test (while (/= TM.B) moveR) ([I, I], B, [I, I])
+>>> test (while (/= UTM.B) moveR) ([I, I], B, [I, I])
 11_11 --> 11_11
   ^         ^
 -}
@@ -94,11 +94,11 @@ while predicate body whileInitialEnv =
     whileFinalState = get whileFinalEnv
 
     dispatch = [ ((whileInitialState, symbol),
-                  (if predicate symbol then bodyInitialState else whileFinalState, TM.Nop))
+                  (if predicate symbol then bodyInitialState else whileFinalState, UTM.Nop))
                | symbol <- allSymbols
                ]
 
-    loop = [ ((bodyFinalState, symbol), (whileInitialState, TM.Nop))
+    loop = [ ((bodyFinalState, symbol), (whileInitialState, UTM.Nop))
            | symbol <- allSymbols
            ]
 
@@ -116,11 +116,11 @@ _____ --> __0__
 11111 --> 11_11
   ^         ^
 -}
-write :: TM.S -> Compiler
+write :: UTM.S -> Compiler
 write s env0
   | s `elem` candidates = (env1, code)
   | otherwise = error $ "try to write invalid symbol: " ++ show s
-  where code = [ ((get env0, symbol), (get env1, TM.Write s))
+  where code = [ ((get env0, symbol), (get env1, UTM.Write s))
                | symbol <- candidates
                ]
         env1 = next env0
@@ -128,11 +128,11 @@ write s env0
         candidates = writableSymbols ++ restrictedSymbols
 
 -- | erase: primitive
-erase :: TM.D -> Compiler
-erase d = while p (write TM.B `compose` move d)
+erase :: UTM.D -> Compiler
+erase d = while p (write UTM.B `compose` move d)
   where
-    p :: TM.S -> Bool
-    p c | c == TM.B                  = False
+    p :: UTM.S -> Bool
+    p c | c == UTM.B                 = False
         | c `elem` writableSymbols   = True
         | c `elem` readOnlySymbols   = error $ "try to erase read-only symbol: " ++ show c
         | c `elem` restrictedSymbols = error $ "try to erase restricted symbol: " ++ show c
@@ -150,7 +150,7 @@ _____ --> _____
   ^         ^
 -}
 eraseR :: Compiler
-eraseR = erase TM.R
+eraseR = erase UTM.R
 
 {- | eraseL: 左へ1,0を空白に置き換えながら移動し、空白で停止
 >>> test eraseL ([I, I], I, [I, I])
@@ -164,12 +164,12 @@ _____ --> _____
   ^         ^
 -}
 eraseL :: Compiler
-eraseL = erase TM.L
+eraseL = erase UTM.L
 
 -- | move: primitives
-move :: TM.D -> Compiler
+move :: UTM.D -> Compiler
 move d env0 = (env1, code)
-  where code = [ ((get env0, symbol), (get env1, TM.Move d))
+  where code = [ ((get env0, symbol), (get env1, UTM.Move d))
                | symbol <- allSymbols
                ]
         env1 = next env0
@@ -186,7 +186,7 @@ _____ --> _____
   ^          ^
 -}
 moveR :: Compiler
-moveR = move TM.R
+moveR = move UTM.R
 
 {- | moveL: 左へ1つ移動
 >>> test moveL ([I, I], I, [I, I])
@@ -200,7 +200,7 @@ _____ --> _____
   ^        ^
 -}
 moveL :: Compiler
-moveL = move TM.L
+moveL = move UTM.L
 
 {- | moveTo: 指定方向で最初に見つかるシンボルまで移動する
 >>> test (moveTo (R, SP)) ([I, I], I, [B, B, SP, I])
@@ -210,7 +210,7 @@ moveL = move TM.L
 #__111 --> #__111
      ^     ^
 -}
-moveTo :: (TM.D, TM.S) -> Compiler
+moveTo :: (UTM.D, UTM.S) -> Compiler
 moveTo (direction, symbol) = while (/= symbol) (move direction)
 
 {- | moveAfter: 指定方向で最初に見つかるシンボルの右隣へ移動する
@@ -221,16 +221,16 @@ moveTo (direction, symbol) = while (/= symbol) (move direction)
 #__111 --> #__111
      ^      ^
 -}
-moveAfter :: (TM.D, TM.S) -> Compiler
+moveAfter :: (UTM.D, UTM.S) -> Compiler
 moveAfter target = moveTo target `compose` moveR
 
 isPlainBit :: S -> Bool
-isPlainBit TM.I = True
-isPlainBit TM.O = True
-isPlainBit TM.B = False
-isPlainBit s    = error $ "unexpected symbol in bit sequence: " ++ show s
+isPlainBit UTM.I = True
+isPlainBit UTM.O = True
+isPlainBit UTM.B = False
+isPlainBit s     = error $ "unexpected symbol in bit sequence: " ++ show s
 
-skipSeq :: TM.D -> Compiler
+skipSeq :: UTM.D -> Compiler
 skipSeq direction = while isPlainBit (move direction)
 
 {- | 右へ1,0の列をスキップして空白で停止
@@ -254,7 +254,7 @@ skipSeq direction = while isPlainBit (move direction)
   ^         ^
 -}
 skipSeqR :: Compiler
-skipSeqR = skipSeq TM.R
+skipSeqR = skipSeq UTM.R
 
 {- | 左へ1,0の列をスキップして空白で停止
 >>> test skipSeqL ([I, I], I, [I, I])
@@ -277,7 +277,7 @@ skipSeqR = skipSeq TM.R
   ^         ^
 -}
 skipSeqL :: Compiler
-skipSeqL = skipSeq TM.L
+skipSeqL = skipSeq UTM.L
 
 {- | copyTo: 非破壊的コピー
 >>> test (copyTo (R, SP)) ([I, I], I, [B, B, SP])
@@ -290,7 +290,7 @@ skipSeqL = skipSeq TM.L
 #____1011__# --> #10111011__#
         ^             ^
 -}
-copyTo :: (TM.D, TM.S) -> Compiler
+copyTo :: (UTM.D, UTM.S) -> Compiler
 copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` restoreSource
   where
     toMostSignificant :: Compiler
@@ -300,15 +300,15 @@ copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose
     copyBits = while isPlainBit copyBit
 
     copyBit :: Compiler
-    copyBit = branch (== TM.I) copyI copyO
+    copyBit = branch (== UTM.I) copyI copyO
 
     copyI :: Compiler
-    copyI = copyMarked TM.MI TM.I
+    copyI = copyMarked UTM.MI UTM.I
 
     copyO :: Compiler
-    copyO = copyMarked TM.MO TM.O
+    copyO = copyMarked UTM.MO UTM.O
 
-    copyMarked :: TM.S -> TM.S -> Compiler
+    copyMarked :: UTM.S -> UTM.S -> Compiler
     copyMarked sourceMark bit
       = foldl1 compose [write sourceMark, moveAfter (markerDirection, marker), skipSeqR, write bit, nextSource]
 
@@ -317,23 +317,23 @@ copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose
 
     nextSource :: Compiler
     nextSource = case markerDirection of
-      TM.R -> seekMarkedSource `compose` moveR
-      TM.L -> seekMarkedSource `compose` while isMark moveR
+      UTM.R -> seekMarkedSource `compose` moveR
+      UTM.L -> seekMarkedSource `compose` while isMark moveR
 
     restoreSource :: Compiler
     restoreSource = moveL `compose` while isMark restoreBit `compose` moveR
 
     restoreBit :: Compiler
-    restoreBit = branch (== TM.MI) (write TM.I) (write TM.O) `compose` moveL
+    restoreBit = branch (== UTM.MI) (write UTM.I) (write UTM.O) `compose` moveL
 
-    isMark :: TM.S -> Bool
-    isMark TM.MI = True
-    isMark TM.MO = True
-    isMark _     = False
+    isMark :: UTM.S -> Bool
+    isMark UTM.MI = True
+    isMark UTM.MO = True
+    isMark _      = False
 
-    opposite :: TM.D -> TM.D
-    opposite TM.L = TM.R
-    opposite TM.R = TM.L
+    opposite :: UTM.D -> UTM.D
+    opposite UTM.L = UTM.R
+    opposite UTM.R = UTM.L
 
 {- | 現在位置を最下位桁とするビット列と、指定方向で最初に見つかる
 区切り記号の右側にあるビット列を比較する。成功時はコピー先列の末尾の
@@ -353,7 +353,7 @@ copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose
 10__#101 --> 10__#101
  ^                  ^
 -}
-matchTo :: (TM.D, TM.S) -> Compiler
+matchTo :: (UTM.D, UTM.S) -> Compiler
 matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `compose` finish
   where
     toMostSignificant :: Compiler
@@ -363,22 +363,22 @@ matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `com
     compareBits = while continueSource compareBit
 
     compareBit :: Compiler
-    compareBit = branch (== TM.I) compareI compareO
+    compareBit = branch (== UTM.I) compareI compareO
 
     compareI :: Compiler
-    compareI = compareMarked TM.MI TM.HI TM.I
+    compareI = compareMarked UTM.MI UTM.HI UTM.I
 
     compareO :: Compiler
-    compareO = compareMarked TM.MO TM.HO TM.O
+    compareO = compareMarked UTM.MO UTM.HO UTM.O
 
-    compareMarked :: TM.S -> TM.S -> TM.S -> Compiler
+    compareMarked :: UTM.S -> UTM.S -> UTM.S -> Compiler
     compareMarked sourceMark targetMark bit = foldl1 compose
       [ write sourceMark
       , moveAfter (markerDirection, marker)
       , skipTargetMarks
       , branch (== bit)
           (write targetMark `compose` restoreSource bit `compose` moveR)
-          (branch (== TM.B) seekSourceMark (branch (== TM.I) (write TM.HI) (write TM.HO)))
+          (branch (== UTM.B) seekSourceMark (branch (== UTM.I) (write UTM.HI) (write UTM.HO)))
       ]
 
     finish :: Compiler
@@ -406,22 +406,22 @@ matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `com
     finishAfterSource = foldl1 compose
       [ moveAfter (markerDirection, marker)
       , skipTargetMarks
-      , branch (== TM.B) cleanupFromTarget targetLonger
+      , branch (== UTM.B) cleanupFromTarget targetLonger
       ]
 
     targetLonger :: Compiler
-    targetLonger = branch (== TM.I) (write TM.HI) (write TM.HO)
+    targetLonger = branch (== UTM.I) (write UTM.HI) (write UTM.HO)
                  `compose` cleanupFromTarget
                  `compose` moveL
 
     seekSourceMark :: Compiler
     seekSourceMark = while (not . isSourceMark) (move (opposite markerDirection))
 
-    restoreSource :: TM.S -> Compiler
+    restoreSource :: UTM.S -> Compiler
     restoreSource bit = seekSourceMark `compose` write bit
 
     restoreSourceMark :: Compiler
-    restoreSourceMark = branch (== TM.MI) (write TM.I) (write TM.O)
+    restoreSourceMark = branch (== UTM.MI) (write UTM.I) (write UTM.O)
 
     skipTargetMarks :: Compiler
     skipTargetMarks = while isTargetMark moveR
@@ -430,34 +430,34 @@ matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `com
     restoreTarget = while isTargetMark restoreBit
 
     restoreBit :: Compiler
-    restoreBit = branch (== TM.HI) (write TM.I) (write TM.O) `compose` moveR
+    restoreBit = branch (== UTM.HI) (write UTM.I) (write UTM.O) `compose` moveR
 
     cleanupFromTarget :: Compiler
-    cleanupFromTarget = moveAfter (TM.L, marker) `compose` restoreTarget
+    cleanupFromTarget = moveAfter (UTM.L, marker) `compose` restoreTarget
 
-    continueSource :: TM.S -> Bool
-    continueSource TM.MI = False
-    continueSource TM.MO = False
-    continueSource TM.HI = False
-    continueSource TM.HO = False
-    continueSource s     = isPlainBit s
+    continueSource :: UTM.S -> Bool
+    continueSource UTM.MI = False
+    continueSource UTM.MO = False
+    continueSource UTM.HI = False
+    continueSource UTM.HO = False
+    continueSource s      = isPlainBit s
 
-    isSourceMark :: TM.S -> Bool
-    isSourceMark TM.MI = True
-    isSourceMark TM.MO = True
-    isSourceMark _     = False
+    isSourceMark :: UTM.S -> Bool
+    isSourceMark UTM.MI = True
+    isSourceMark UTM.MO = True
+    isSourceMark _      = False
 
-    isTargetMark :: TM.S -> Bool
-    isTargetMark TM.HI = True
-    isTargetMark TM.HO = True
-    isTargetMark TM.I  = False
-    isTargetMark TM.O  = False
-    isTargetMark TM.B  = False
-    isTargetMark s     = error $ "matchTo: unexpected target symbol: " ++ show s
+    isTargetMark :: UTM.S -> Bool
+    isTargetMark UTM.HI = True
+    isTargetMark UTM.HO = True
+    isTargetMark UTM.I  = False
+    isTargetMark UTM.O  = False
+    isTargetMark UTM.B  = False
+    isTargetMark s      = error $ "matchTo: unexpected target symbol: " ++ show s
 
-    opposite :: TM.D -> TM.D
-    opposite TM.L = TM.R
-    opposite TM.R = TM.L
+    opposite :: UTM.D -> UTM.D
+    opposite UTM.L = UTM.R
+    opposite UTM.R = UTM.L
 
 -- | テスト用ユーティリティ
 test :: Compiler -> Tape -> IO ()

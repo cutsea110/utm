@@ -7,6 +7,6 @@ main = doctest
   [ "-isrc"
   , "src/Compiler.hs"
   , "src/Eval.hs"
-  , "src/TM.hs"
+  , "src/UTM.hs"
   , "src/TM1.hs"
   ]

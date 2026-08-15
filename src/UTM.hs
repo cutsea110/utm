@@ -1,4 +1,4 @@
-module TM where
+module UTM where
 
 -- | delta
 data D = R -- ^ move right
