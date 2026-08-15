@@ -14,4 +14,4 @@ class TuringMachine tm where
 
   initialState :: tm -> State tm
   blankSymbol  :: tm -> Symbol tm
-  transition :: tm -> State tm -> Symbol tm -> Maybe (State tm, Symbol tm, UTM.D)
+  transition   :: tm -> State tm -> Symbol tm -> Maybe (State tm, Symbol tm, UTM.D)
