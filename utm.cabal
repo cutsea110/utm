@@ -18,8 +18,8 @@ common warnings
     ghc-options: -Wall
 library
     exposed-modules:  Compiler
-                      Eval
                       UTM
+                      UTMEval
                       TM1
     build-depends:    base ^>=4.22.0.0, containers
     hs-source-dirs:   src

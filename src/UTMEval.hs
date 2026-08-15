@@ -1,4 +1,4 @@
-module Eval (eval) where
+module UTMEval (eval) where
 
 import qualified UTM
 

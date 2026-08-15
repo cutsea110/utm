@@ -1,7 +1,7 @@
 module Main (main) where
 
-import Eval (eval)
 import UTM  (Tape, S(..), addOne)
+import UTMEval (eval)
 
 t :: Tape
 t = ([I, I, I], I, [])

@@ -2,7 +2,7 @@ module Compiler where
 
 import UTM (Q(..), Delta, A(..), S(..), D(..), Tape, showTape
            , allSymbols, readOnlySymbols, writableSymbols, restrictedSymbols)
-import Eval (eval)
+import UTMEval (eval)
 
 data Env = Env { state :: Int
                }
