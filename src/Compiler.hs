@@ -413,7 +413,18 @@ copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose
  ^                  ^
 -}
 matchTo :: (UTM.D, UTM.S) -> Compiler
-matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `compose` finish
+matchTo target = matchToUntil target UTM.B
+
+{-| 'matchTo' の比較先終端記号を指定する版。
+source は従来どおり空白 ('B') 終端、target は 'targetEnd' 終端として比較する。
+
+>>> eval (S 0, snd (matchToUntil (R, TS) SP defEnv)) ([O, I], I, [B, B, TS, I, O, I, SP])
+([I,O,I,TS,B,B,I,O,I],SP,[])
+>>> eval (S 0, snd (matchToUntil (R, TS) ST defEnv)) ([O, I], I, [B, B, TS, I, O, I, ST])
+([I,O,I,TS,B,B,I,O,I],ST,[])
+-}
+matchToUntil :: (UTM.D, UTM.S) -> UTM.S -> Compiler
+matchToUntil (markerDirection, marker) targetEnd = toMostSignificant `compose` compareBits `compose` finish
   where
     toMostSignificant :: Compiler
     toMostSignificant = skipSeqL `compose` moveR
@@ -437,7 +448,7 @@ matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `com
       , skipTargetMarks
       , branch (== bit)
           (write targetMark `compose` restoreSource bit `compose` moveR)
-          (branch (== UTM.B) seekSourceMark (branch (== UTM.I) (write UTM.HI) (write UTM.HO)))
+          (branch (== targetEnd) seekSourceMark (branch (== UTM.I) (write UTM.HI) (write UTM.HO)))
       ]
 
     finish :: Compiler
@@ -465,7 +476,7 @@ matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `com
     finishAfterSource = foldl1 compose
       [ moveAfter (markerDirection, marker)
       , skipTargetMarks
-      , branch (== UTM.B) cleanupFromTarget targetLonger
+      , branch (== targetEnd) cleanupFromTarget targetLonger
       ]
 
     targetLonger :: Compiler
@@ -512,6 +523,8 @@ matchTo (markerDirection, marker) = toMostSignificant `compose` compareBits `com
     isTargetMark UTM.I  = False
     isTargetMark UTM.O  = False
     isTargetMark UTM.B  = False
+    isTargetMark s
+      | s == targetEnd  = False
     isTargetMark s      = error $ "matchTo: unexpected target symbol: " ++ show s
 
     opposite :: UTM.D -> UTM.D
