@@ -35,6 +35,18 @@ tm1 =
   , ((Carry, Blank), (Halt,  One,  Right))
   ]
 
+{- | チューリングマシンの1ステップの実行
+  - 入力: プログラムと現在の状態とテープ
+  - 出力: 次の状態とテープ、または終了を示すNothing
+>>> step tm1 (Carry, ([One, One], One, [Blank, Blank]))
+Just (Carry,([One],One,[Zero,Blank,Blank]))
+
+>>> step tm1 (Carry, ([One], Zero, [Blank, Blank]))
+Just (Halt,([One,One],Blank,[Blank]))
+
+>>> step tm1 (Halt, ([One], One, [Blank, Blank]))
+Nothing
+-}
 step :: Program -> (Q, Tape) -> Maybe (Q, Tape)
 step program (state, (ls, h, rs)) =
   case lookup (state, h) program of
@@ -54,6 +66,18 @@ step program (state, (ls, h, rs)) =
     cons (Blank, []) = []
     cons (x, xs)     = x:xs
 
+{- | チューリングマシンの実行
+  - 入力: プログラムと初期状態とテープ
+  - 出力: 終了時の状態とテープ
+>>> eval tm1 (Carry, ([One, One], One, [Blank, Blank]))
+(Halt,([One],Zero,[Zero,Zero,Blank,Blank]))
+
+>>> eval tm1 (Carry, ([One], Zero, [Blank, Blank]))
+(Halt,([One,One],Blank,[Blank]))
+
+>>> eval tm1 (Halt, ([One], One, [Blank, Blank]))
+(Halt,([One],One,[Blank,Blank]))
+-}
 eval :: Program -> (Q, Tape) -> (Q, Tape)
 eval program (state, tape) =
   case step program (state, tape) of
