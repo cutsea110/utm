@@ -22,7 +22,7 @@ type Program = [((Q, Sym), (Q, Sym, Dir))]
 
 type Tape = ([Sym], Sym, [Sym])
 
-{- | 整数に対して1を加算するチューリングマシンのプログラム
+{-| 整数に対して1を加算するチューリングマシンのプログラム
   1. 1 + 1 = 10
   2. 1 + 0 = 01
   3. 0 + 1 = 01
@@ -35,7 +35,7 @@ tm1 =
   , ((Carry, Blank), (Halt,  One,  Right))
   ]
 
-{- | チューリングマシンの1ステップの実行
+{-| チューリングマシンの1ステップの実行
   - 入力: プログラムと現在の状態とテープ
   - 出力: 次の状態とテープ、または終了を示すNothing
 >>> step tm1 (Carry, ([One, One], One, [Blank, Blank]))
@@ -66,7 +66,7 @@ step program (state, (ls, h, rs)) =
     cons (Blank, []) = []
     cons (x, xs)     = x:xs
 
-{- | チューリングマシンの実行
+{-| チューリングマシンの実行
   - 入力: プログラムと初期状態とテープ
   - 出力: 終了時の状態とテープ
 >>> eval tm1 (Carry, ([One, One], One, [Blank, Blank]))

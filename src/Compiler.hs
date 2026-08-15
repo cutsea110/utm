@@ -17,7 +17,7 @@ defEnv = Env { state = 0 }
 
 type Compiler = Env -> (Env, UTM.Delta)
 
-{- | 逐次実行: c1の停止状態にc2を続けて実行する
+{-| 逐次実行: c1の停止状態にc2を続けて実行する
 >>> test (moveR `compose` write I) ([B, B], B, [B, B])
 _____ --> ___1_
   ^          ^
@@ -31,7 +31,7 @@ compose :: Compiler -> Compiler -> Compiler
     (env1, code1) = c1 env0
     (env2, code2) = c2 env1
 
-{- | 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
+{-| 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
 >>> test (branch (== UTM.I) (write O) (write I)) ([B, B], I, [B, B])
 __1__ --> __0__
   ^         ^
@@ -68,7 +68,7 @@ branch predicate c1 c2 branchInitialEnv =
            , symbol <- allSymbols
            ]
 
-{- | ループ: ヘッドがpredicateを満たすときbodyを実行し、それ以外のとき停止する
+{-| ループ: ヘッドがpredicateを満たすときbodyを実行し、それ以外のとき停止する
 >>> test (while (/= UTM.B) moveR) ([I, I], I, [I, I])
 11111 --> 11111_
   ^            ^
@@ -102,7 +102,7 @@ while predicate body whileInitialEnv =
            | symbol <- allSymbols
            ]
 
-{- | write: primitives
+{-| write: primitives
 >>> test (write I) ([B, B], B, [B, B])
 _____ --> __1__
   ^         ^
@@ -138,7 +138,7 @@ erase d = while p (write UTM.B `compose` move d)
         | c `elem` restrictedSymbols = error $ "try to erase restricted symbol: " ++ show c
         | otherwise                  = error $ "unexpected case: " ++ show c
 
-{- | eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止
+{-| eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止
 >>> test eraseR ([I, I], I, [I, I])
 11111 --> 11____
   ^            ^
@@ -152,7 +152,7 @@ _____ --> _____
 eraseR :: Compiler
 eraseR = erase UTM.R
 
-{- | eraseL: 左へ1,0を空白に置き換えながら移動し、空白で停止
+{-| eraseL: 左へ1,0を空白に置き換えながら移動し、空白で停止
 >>> test eraseL ([I, I], I, [I, I])
 11111 --> ____11
   ^       ^
@@ -174,7 +174,7 @@ move d env0 = (env1, code)
                ]
         env1 = next env0
 
-{- | moveR: 右へ1つ移動
+{-| moveR: 右へ1つ移動
 >>> test moveR ([I, I], I, [I, I])
 11111 --> 11111
   ^          ^
@@ -188,7 +188,7 @@ _____ --> _____
 moveR :: Compiler
 moveR = move UTM.R
 
-{- | moveL: 左へ1つ移動
+{-| moveL: 左へ1つ移動
 >>> test moveL ([I, I], I, [I, I])
 11111 --> 11111
   ^        ^
@@ -202,7 +202,7 @@ _____ --> _____
 moveL :: Compiler
 moveL = move UTM.L
 
-{- | moveTo: 指定方向で最初に見つかるシンボルまで移動する
+{-| moveTo: 指定方向で最初に見つかるシンボルまで移動する
 >>> test (moveTo (R, SP)) ([I, I], I, [B, B, SP, I])
 111__#1 --> 111__#1
   ^              ^
@@ -213,7 +213,7 @@ moveL = move UTM.L
 moveTo :: (UTM.D, UTM.S) -> Compiler
 moveTo (direction, symbol) = while (/= symbol) (move direction)
 
-{- | moveAfter: 指定方向で最初に見つかるシンボルの右隣へ移動する
+{-| moveAfter: 指定方向で最初に見つかるシンボルの右隣へ移動する
 >>> test (moveAfter (R, SP)) ([I, I], I, [B, B, SP, I])
 111__#1 --> 111__#1
   ^               ^
@@ -233,7 +233,7 @@ isPlainBit s     = error $ "unexpected symbol in bit sequence: " ++ show s
 skipSeq :: UTM.D -> Compiler
 skipSeq direction = while isPlainBit (move direction)
 
-{- | 右へ1,0の列をスキップして空白で停止
+{-| 右へ1,0の列をスキップして空白で停止
 >>> test skipSeqR ([I, I], I, [I, I])
 11111 --> 11111_
   ^            ^
@@ -256,7 +256,7 @@ skipSeq direction = while isPlainBit (move direction)
 skipSeqR :: Compiler
 skipSeqR = skipSeq UTM.R
 
-{- | 左へ1,0の列をスキップして空白で停止
+{-| 左へ1,0の列をスキップして空白で停止
 >>> test skipSeqL ([I, I], I, [I, I])
 11111 --> _11111
   ^       ^
@@ -279,7 +279,7 @@ skipSeqR = skipSeq UTM.R
 skipSeqL :: Compiler
 skipSeqL = skipSeq UTM.L
 
-{- | copyTo: 非破壊的コピー
+{-| copyTo: 非破壊的コピー
 >>> test (copyTo (R, SP)) ([I, I], I, [B, B, SP])
 111__# --> 111__#111
   ^        ^
@@ -335,7 +335,7 @@ copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose
     opposite UTM.L = UTM.R
     opposite UTM.R = UTM.L
 
-{- | 現在位置を最下位桁とするビット列と、指定方向で最初に見つかる
+{-| 現在位置を最下位桁とするビット列と、指定方向で最初に見つかる
 区切り記号の右側にあるビット列を比較する。成功時はコピー先列の末尾の
 空白 (`B`) で、不一致時は食い違った桁（または余った桁）の `I` / `O` で
 停止する。終了時には、両方の列を含むテープは入力時と同じ状態へ復元される。
