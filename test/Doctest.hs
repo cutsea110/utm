@@ -8,4 +8,5 @@ main = doctest
   , "src/Compiler.hs"
   , "src/Eval.hs"
   , "src/TM.hs"
+  , "src/TM1.hs"
   ]
