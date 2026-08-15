@@ -1,5 +1,8 @@
+{-# LANGUAGE TypeFamilies #-}
 module TM1 where
 
+import TuringMachine (TuringMachine(..))
+import qualified UTM
 import Prelude hiding (Left, Right)
 
 data Dir = Left
@@ -18,9 +21,6 @@ data Q = Carry
 type Program = [((Q, Sym), (Q, Sym, Dir))]
 
 type Tape = ([Sym], Sym, [Sym])
-
-initialState :: Q
-initialState = Carry
 
 {- | 整数に対して1を加算するチューリングマシンのプログラム
   1. 1 + 1 = 10
@@ -83,3 +83,18 @@ eval program (state, tape) =
   case step program (state, tape) of
     Just (newState, newTape) -> eval program (newState, newTape)
     Nothing                  -> (state, tape)
+
+-- | witness type
+data TM1 = TM1
+
+instance TuringMachine TM1 where
+  type State  TM1 = Q
+  type Symbol TM1 = Sym
+
+  initialState _ = Carry
+  blankSymbol  _ = Blank
+
+  transition _ q s = case lookup (q, s) tm1 of
+    Just (q', s', Left)  -> Just (q', s', UTM.L)
+    Just (q', s', Right) -> Just (q', s', UTM.R)
+    Nothing              -> Nothing

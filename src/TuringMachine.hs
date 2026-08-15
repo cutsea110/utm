@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeFamilies #-}
 module TuringMachine where
 
 import qualified UTM
