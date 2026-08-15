@@ -8,6 +8,7 @@ main = doctest
   , "src/Compiler.hs"
   , "src/UTM.hs"
   , "src/UTMEval.hs"
+  , "src/UTMEncoding.hs"
   , "src/TuringMachine.hs"
   , "src/TM1.hs"
   ]
