@@ -418,23 +418,23 @@ copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose
     opposite UTM.L = UTM.R
     opposite UTM.R = UTM.L
 
-{-| 現在位置を最下位桁とするビット列と、指定方向で最初に見つかる
+{-| 現在位置を最上位桁とするビット列と、指定方向で最初に見つかる
 区切り記号の右側にあるビット列を比較する。成功時はコピー先列の末尾の
 空白 (`B`) で、不一致時は食い違った桁（または余った桁）の `I` / `O` で
 停止する。終了時には、両方の列を含むテープは入力時と同じ状態へ復元される。
 
->>> test (matchTo (R, SP)) ([O, I], I, [B, B, SP, I, O, I])
+>>> test (matchTo (R, SP)) ([], I, [O, I, B, B, SP, I, O, I])
 101__#101 --> 101__#101_
-  ^                    ^
->>> test (matchTo (L, SP)) ([O, I, B, I, O, I, SP], O, [])
+^                      ^
+>>> test (matchTo (L, SP)) ([B, I, O, I, SP], I, [O, O])
 #101_100 --> #101_100
-       ^        ^
->>> test (matchTo (R, SP)) ([O, I], I, [B, B, SP, I, O])
+     ^          ^
+>>> test (matchTo (R, SP)) ([], I, [O, I, B, B, SP, I, O])
 101__#10 --> 101__#10
-  ^            ^
->>> test (matchTo (R, SP)) ([I], O, [B, B, SP, I, O, I])
+^              ^
+>>> test (matchTo (R, SP)) ([], I, [O, B, B, SP, I, O, I])
 10__#101 --> 10__#101
- ^                  ^
+^                   ^
 -}
 matchTo :: (UTM.D, UTM.S) -> Compiler
 matchTo target = matchToUntil target UTM.B
@@ -442,17 +442,14 @@ matchTo target = matchToUntil target UTM.B
 {-| 'matchTo' の比較先終端記号を指定する版。
 source は従来どおり空白 ('B') 終端、target は 'targetEnd' 終端として比較する。
 
->>> eval (S 0, snd (matchToUntil (R, TS) SP defEnv)) ([O, I], I, [B, B, TS, I, O, I, SP])
+>>> eval (S 0, snd (matchToUntil (R, TS) SP defEnv)) ([], I, [O, I, B, B, TS, I, O, I, SP])
 ([I,O,I,TS,B,B,I,O,I],SP,[])
->>> eval (S 0, snd (matchToUntil (R, TS) ST defEnv)) ([O, I], I, [B, B, TS, I, O, I, ST])
+>>> eval (S 0, snd (matchToUntil (R, TS) ST defEnv)) ([], I, [O, I, B, B, TS, I, O, I, ST])
 ([I,O,I,TS,B,B,I,O,I],ST,[])
 -}
 matchToUntil :: (UTM.D, UTM.S) -> UTM.S -> Compiler
-matchToUntil (markerDirection, marker) targetEnd = toMostSignificant `compose` compareBits `compose` finish
+matchToUntil (markerDirection, marker) targetEnd = compareBits `compose` finish
   where
-    toMostSignificant :: Compiler
-    toMostSignificant = skipSeqL `compose` moveR
-
     compareBits :: Compiler
     compareBits = while continueSource compareBit
 
