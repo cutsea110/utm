@@ -1,12 +1,39 @@
 module UTMEncoding where
 
-import Data.List (unfoldr, (\\))
+import Data.List (unfoldr)
 import qualified UTM
 import qualified TuringMachine as TM
 
+data Codebook q s = Codebook
+  { stateTable  :: [(q, [UTM.S])]
+  , symbolTable :: [(s, UTM.S)]
+  , stateWidth  :: Int
+  }
+
+makeCodebook :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
+             => tm -> Codebook (TM.State tm) (TM.Symbol tm)
+makeCodebook tm
+  | null qs = error "makeCodebook: target TM has no states"
+  | blank `notElem` ss = error "makeCodebook: blank symbol is not in the symbol list"
+  | length nonBlankSymbols > 2 = error "makeCodebook: target TM has more than 2 non-blank symbols"
+  | otherwise = Codebook
+      { stateTable  = zip qs (map encodeBinary [0..])
+      , symbolTable = zip nonBlankSymbols [UTM.O, UTM.I] ++ [(blank, UTM.B)]
+      , stateWidth  = length (encodeBinary (length qs - 1))
+      }
+  where
+    qs = TM.states tm
+    ss = TM.symbols tm
+    blank = TM.blankSymbol tm
+    nonBlankSymbols = filter (/= blank) ss
+
 encodeProgram :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
               => tm -> [UTM.S]
-encodeProgram tm = concatMap (encodeTransition tm) transitions
+encodeProgram tm = encodeProgramWith tm (makeCodebook tm)
+
+encodeProgramWith :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
+                  => tm -> Codebook (TM.State tm) (TM.Symbol tm) -> [UTM.S]
+encodeProgramWith tm codebook = concatMap (encodeTransitionWith codebook) transitions
   where states       = TM.states tm
         symbols      = TM.symbols tm
         transitions  = [ (q, s, q', s', d)
@@ -24,11 +51,15 @@ encodeProgram tm = concatMap (encodeTransition tm) transitions
 -}
 encodeTransition :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
                  => tm -> (TM.State tm, TM.Symbol tm, TM.State tm, TM.Symbol tm, UTM.D) -> [UTM.S]
-encodeTransition tm (q, s, q', s', d)
-  = UTM.TS:encodeState tm q
-  ++ [UTM.SP, encodeSymbol tm s, UTM.SP]
-  ++ encodeState tm q'
-  ++ [UTM.SP, encodeSymbol tm s', UTM.SP, encodeDirection d, UTM.ST]
+encodeTransition tm = encodeTransitionWith (makeCodebook tm)
+
+encodeTransitionWith :: (Eq q, Eq s)
+                     => Codebook q s -> (q, s, q, s, UTM.D) -> [UTM.S]
+encodeTransitionWith codebook (q, s, q', s', d)
+  = UTM.TS:encodeStateWith codebook q
+  ++ [UTM.SP, encodeSymbolWith codebook s, UTM.SP]
+  ++ encodeStateWith codebook q'
+  ++ [UTM.SP, encodeSymbolWith codebook s', UTM.SP, encodeDirection d, UTM.ST]
 
 {-| 状態は 0..n-1 の整数で表現されるので、2進数に変換して返す。
 >>> import TM1
@@ -37,14 +68,16 @@ encodeTransition tm (q, s, q', s', d)
 >>> encodeState TM1 TM1.Halt
 [I]
 -}
-encodeState :: (TM.TuringMachine tm, Eq (TM.State tm))
+encodeState :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
                    => tm -> TM.State tm -> [UTM.S]
-encodeState tm q = case lookup q dict of
-  Just code -> code
-  Nothing   -> error "encodeInitialState: state not found in dictionary"
-  where dict = zip (TM.states tm) $ map encodeBinary [0..]
+encodeState tm = encodeStateWith (makeCodebook tm)
 
-{-| 非負正数を I, O の二進表現へ変換する
+encodeStateWith :: Eq q => Codebook q s -> q -> [UTM.S]
+encodeStateWith codebook q = case lookup q (stateTable codebook) of
+  Just code -> code
+  Nothing   -> error "encodeState: state not found in codebook"
+
+{-| 非負整数を I, O の二進表現へ変換する
 >>> encodeBinary 0
 [O]
 >>> encodeBinary 1
@@ -82,12 +115,12 @@ B
 -}
 encodeSymbol :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
              => tm -> TM.Symbol tm -> UTM.S
-encodeSymbol tm s = case lookup s dict of
-        Just code -> code
-        Nothing   -> error "encodeBlankSymbol: symbol not found in dictionary"
-  where dict | length twoSymbols <= 2 = zip twoSymbols [UTM.O, UTM.I] ++ [(TM.blankSymbol tm, UTM.B)]
-             | otherwise = error "encodeSymbol: target TM has more than 2 non-blank symbols"
-        twoSymbols = TM.symbols tm \\ [TM.blankSymbol tm]
+encodeSymbol tm = encodeSymbolWith (makeCodebook tm)
+
+encodeSymbolWith :: Eq s => Codebook q s -> s -> UTM.S
+encodeSymbolWith codebook s = case lookup s (symbolTable codebook) of
+  Just code -> code
+  Nothing   -> error "encodeSymbol: symbol not found in codebook"
 
 {-| ヘッドが指すシンボルは B, I, O のいずれかであることが制約となっているので 1 シンボルで返される
 >>> import TM1
@@ -100,12 +133,16 @@ HB
 -}
 encodeHead :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
            => tm -> TM.Symbol tm -> UTM.S
-encodeHead tm = headSymbol . encodeSymbol tm
-  where
-    headSymbol UTM.B = UTM.HB
-    headSymbol UTM.I = UTM.HI
-    headSymbol UTM.O = UTM.HO
-    headSymbol s     = error $ "encodeHead: invalid symbol for head: " ++ show s
+encodeHead tm = encodeHeadWith (makeCodebook tm)
+
+encodeHeadWith :: Eq s => Codebook q s -> s -> UTM.S
+encodeHeadWith codebook = headSymbol . encodeSymbolWith codebook
+
+headSymbol :: UTM.S -> UTM.S
+headSymbol UTM.B = UTM.HB
+headSymbol UTM.I = UTM.HI
+headSymbol UTM.O = UTM.HO
+headSymbol s     = error $ "headSymbol: invalid symbol for head: " ++ show s
 
 encodeDirection :: UTM.D -> UTM.S
 encodeDirection UTM.L = UTM.O
@@ -113,8 +150,11 @@ encodeDirection UTM.R = UTM.I
 
 encodeVirtualTape :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
                   => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> [UTM.S]
-encodeVirtualTape tm (ls, h, rs) = buffer ++ cells
-  where cells  = reverse (map (encodeSymbol tm) ls) ++ [encodeHead tm h] ++ map (encodeSymbol tm) rs
+encodeVirtualTape tm = encodeVirtualTapeWith (makeCodebook tm)
+
+encodeVirtualTapeWith :: Eq s => Codebook q s -> ([s], s, [s]) -> [UTM.S]
+encodeVirtualTapeWith codebook (ls, h, rs) = buffer ++ cells
+  where cells  = reverse (map (encodeSymbolWith codebook) ls) ++ [encodeHeadWith codebook h] ++ map (encodeSymbolWith codebook) rs
         -- 左端に伸びるためのバッファを事前追加。
         -- TODO: 境界を超えて左に伸びた場合の処理をどうするか検討する必要がある。
         buffer = replicate (length cells) UTM.B
@@ -127,16 +167,18 @@ encodeVirtualTape tm (ls, h, rs) = buffer ++ cells
 encode :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
        => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> UTM.Tape
 encode tm input = fromSymbols $
-  [UTM.PD] ++ encodeProgram tm
+  [UTM.PD] ++ encodeProgramWith tm codebook
   ++ [UTM.PC] ++ initialStateArea
   ++ [UTM.WQ] ++ emptyStateArea
   ++ [UTM.WS] ++ emptySymbolArea
-  ++ [UTM.VT] ++ encodeVirtualTape tm input
-  where initialStateArea
-          = let code = encodeState tm (TM.initialState tm)
-            in code ++ replicate (stateCapacity tm + 1 - length code) UTM.B -- +1 は終端記号として使う B
-        emptyStateArea  = replicate (stateCapacity tm + 1) UTM.B          -- +1 は終端記号として使う B
-        emptySymbolArea = replicate (symbolCapacity tm) UTM.B
+  ++ [UTM.VT] ++ encodeVirtualTapeWith codebook input
+  where
+    codebook = makeCodebook tm
+    initialStateArea =
+      let code = encodeStateWith codebook (TM.initialState tm)
+      in code ++ replicate (stateWidth codebook + 1 - length code) UTM.B -- +1 は終端記号として使う B
+    emptyStateArea  = replicate (stateWidth codebook + 1) UTM.B          -- +1 は終端記号として使う B
+    emptySymbolArea = replicate (symbolCapacity tm) UTM.B
 
 -- | UTM のヘッダ初期位置にセットする薄い補助関数
 fromSymbols :: [UTM.S] -> UTM.Tape
