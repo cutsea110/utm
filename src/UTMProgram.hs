@@ -6,7 +6,7 @@ import UTM
 utmStep :: Compiler
 utmStep = undefined
 
-{-| VT にいる状態から現在の仮想ヘッドをVTから取得してWorkQにコピーする
+{-| VT にいる状態から現在の仮想ヘッドをVTから取得してWorkSにコピーする
 >>> test copyCurrentHeadToWS ([O, I, B, B, WS], VT, [B,I,B,B,O,HO,B,B])
 S__10T_1__0o__ --> S0_10T_1__0o__
      ^              ^
@@ -20,11 +20,10 @@ S1_10T_1__0^__ --> S__10T_1__0^__
 copyCurrentHeadToWS :: Compiler
 copyCurrentHeadToWS = findHead
         `compose`
-          branch (== UTM.HO)
-            (findAndSetWS UTM.O)
-            (branch (== UTM.HI)
-              (findAndSetWS UTM.I)
-              (findAndSetWS UTM.B))
+          branch (== UTM.HO) (findAndSetWS UTM.O)
+            (branch (== UTM.HI) (findAndSetWS UTM.I)
+              (branch (== UTM.HB) (findAndSetWS UTM.B)
+                (halt UTM.InvalidVirtualTape)))
   where
     findHead :: Compiler
     findHead = while (`notElem` [UTM.HO, UTM.HI, UTM.HB]) moveR
