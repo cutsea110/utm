@@ -21,6 +21,7 @@ library
                       UTM
                       UTMEval
                       UTMEncoding
+                      UTMProgram
                       TuringMachine
                       TM1
     build-depends:    base ^>=4.22.0.0, containers
