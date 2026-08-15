@@ -105,8 +105,8 @@ while predicate body whileInitialEnv =
 {-| 指定した理由で UTM を停止させる。
 停止状態には遷移を定義しないため、'UTMEval.run' はその理由を最終状態として返す。
 
->>> fst (run (S 0, snd (halt UTM.VirtualTapeLeftBoundaryExceeded defEnv)) ([], UTM.B, []))
-Halt VirtualTapeLeftBoundaryExceeded
+>>> run (S 0, snd (halt UTM.VirtualTapeLeftBoundaryExceeded defEnv)) ([], UTM.B, [])
+Failed VirtualTapeLeftBoundaryExceeded ([],B,[])
 -}
 halt :: UTM.HaltReason -> Compiler
 halt reason env0 = (next env0, code)
@@ -114,6 +114,31 @@ halt reason env0 = (next env0, code)
     code = [ ((get env0, symbol), (UTM.Halt reason, UTM.Nop))
            | symbol <- allSymbols
            ]
+
+{-| 仮想ヘッドを左へ1セル移動する。
+'UTM.VT' に到達した場合や仮想テープ内に不正な記号があった場合は、既存の仮想ヘッドを保ったまま停止する。
+
+>>> eval (S 0, snd (moveVirtualHeadL defEnv)) ([UTM.O, UTM.VT], UTM.HI, [UTM.B])
+([VT],HO,[I,B])
+>>> run (S 0, snd (moveVirtualHeadL defEnv)) ([UTM.VT], UTM.HI, [UTM.O])
+Failed VirtualTapeLeftBoundaryExceeded ([VT],HI,[O])
+-}
+moveVirtualHeadL :: Compiler
+moveVirtualHeadL =
+  branch (== UTM.HB) (moveHeadLeft UTM.B)
+    (branch (== UTM.HI) (moveHeadLeft UTM.I)
+      (branch (== UTM.HO) (moveHeadLeft UTM.O)
+        (halt UTM.InvalidVirtualTape)))
+  where
+    moveHeadLeft oldSymbol = moveL `compose`
+      branch (== UTM.VT)
+        (moveR `compose` halt UTM.VirtualTapeLeftBoundaryExceeded)
+        (branch (== UTM.B) (finish UTM.HB)
+          (branch (== UTM.I) (finish UTM.HI)
+            (branch (== UTM.O) (finish UTM.HO)
+              (halt UTM.InvalidVirtualTape))))
+      where
+        finish newHead = write newHead `compose` moveR `compose` write oldSymbol `compose` moveL
 
 {-| write: primitives
 >>> test (write I) ([B, B], B, [B, B])

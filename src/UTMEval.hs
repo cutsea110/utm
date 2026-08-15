@@ -1,4 +1,4 @@
-module UTMEval (eval, run) where
+module UTMEval (eval, run, Result(..)) where
 
 import qualified UTM
 
@@ -32,14 +32,28 @@ exec delta config@(q, tape@(ls, h, rs)) =
     Just (q', UTM.Nop)     -> exec delta (q', tape)
     Nothing                -> config
 
-{-| プログラムを停止するまで実行し、最終状態とテープを返す。
-遷移が定義されていない状態で停止するため、呼び出し側は停止状態を観察できる。
+data Result
+  = Finished UTM.Tape
+  | Failed UTM.HaltReason UTM.Tape
+  | Stuck UTM.Q UTM.Tape
+  deriving (Show, Eq)
+
+{-| プログラムを停止するまで実行し、停止結果を返す。
+'UTM.TargetHalted' は対象 TM の正常終了、その他の 'UTM.HaltReason' は UTM 側の異常終了として扱う。
 
 >>> run UTM.addOne ([], UTM.I, [])
-(S 2,([],I,[O]))
+Stuck (S 2) ([],I,[O])
 -}
-run :: UTM.Program -> UTM.Tape -> (UTM.Q, UTM.Tape)
-run (state, delta) tape = exec delta (state, tape)
+run :: UTM.Program -> UTM.Tape -> Result
+run program tape = case exec delta (state, tape) of
+  (UTM.Halt UTM.TargetHalted, finalTape) -> Finished finalTape
+  (UTM.Halt reason, finalTape)            -> Failed reason finalTape
+  (finalState, finalTape)                 -> Stuck finalState finalTape
+  where
+    (state, delta) = program
 
 eval :: (UTM.Q, UTM.Delta) -> UTM.Tape -> UTM.Tape
-eval program tape = snd (run program tape)
+eval program tape = case run program tape of
+  Finished finalTape -> finalTape
+  Failed _ finalTape -> finalTape
+  Stuck _ finalTape  -> finalTape
