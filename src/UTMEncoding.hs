@@ -6,14 +6,9 @@ import qualified TuringMachine as TM
 
 encodeProgram :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
               => tm -> [UTM.S]
-encodeProgram tm
-  = concatMap (encodeTransition tm) transitions
-  ++ encodeState tm initialState
-  ++ [encodeSymbol tm blankSymbol]
+encodeProgram tm = concatMap (encodeTransition tm) transitions
   where states       = TM.states tm
         symbols      = TM.symbols tm
-        initialState = TM.initialState tm
-        blankSymbol  = TM.blankSymbol tm
         transitions  = [ (q, s, q', s', d)
                        | q <- states
                        , s <- symbols
@@ -73,17 +68,16 @@ encodeVirtualTape tm (ls, h, rs)
 encode :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
        => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> UTM.Tape
 encode tm input = fromSymbols $
-  [UTM.PD]
-  ++ encodeProgram tm
-  ++ [UTM.PC]
-  ++ encodeState tm (TM.initialState tm)
-  ++ replicate (stateCapacity tm) UTM.B
-  ++ [UTM.WQ]
-  ++ replicate (stateCapacity tm) UTM.B
-  ++ [UTM.WS]
-  ++ replicate (symbolCapacity tm) UTM.B
-  ++ [UTM.VT]
-  ++ encodeVirtualTape tm input
+  [UTM.PD] ++ encodeProgram tm
+  ++ [UTM.PC] ++ initialStateArea
+  ++ [UTM.WQ] ++ emptyStateArea
+  ++ [UTM.WS] ++ emptySymbolArea
+  ++ [UTM.VT] ++ encodeVirtualTape tm input
+  where initialStateArea
+          = let code = encodeState tm (TM.initialState tm)
+            in code ++ replicate (stateCapacity tm + 1 - length code) UTM.B -- +1 は終端記号として使う B
+        emptyStateArea  = replicate (stateCapacity tm + 1) UTM.B          -- +1 は終端記号として使う B
+        emptySymbolArea = replicate (symbolCapacity tm) UTM.B
 
 -- | UTM のヘッダ初期位置にセットする薄い補助関数
 fromSymbols :: [UTM.S] -> UTM.Tape
