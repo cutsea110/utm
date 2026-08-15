@@ -25,8 +25,8 @@ data S = B  -- ^ blank
        | WQ -- ^ partition work Q
        | WS -- ^ partition work S
        | VT -- ^ virtual tape
-       | TS -- ^ transaction start
-       | ST -- ^ stop transaction
+       | TS -- ^ transition start
+       | ST -- ^ stop transition
        | SP -- ^ delta code separator
        deriving (Show, Eq)
 
@@ -47,7 +47,7 @@ readOnlySymbols :: [S]
 readOnlySymbols = [PD, PC, WQ, WS, VT, TS, ST, SP]
 
 
--- | utm tape format
+-- | utm tape format (v0 format)
 --                                                                  |<----      virtual head position     ---->|
 --                                                                  |                        v                 |
 -- +------------------------------------+-------------+-------------+-------------+---------------..-----------+
@@ -55,6 +55,14 @@ readOnlySymbols = [PD, PC, WQ, WS, VT, TS, ST, SP]
 -- +------------------------------------+-------------+-------------+-------------+---------------..-----------+
 -- |<--        delta function        -->|<- current ->|<-- workQ -->|<-- workS -->|<--    virtual tape    -->|
 --                                          state
+-- 意味
+-- - @ = TS: transition の区切り
+-- - # = SP: フィールドの区切り
+-- - ; = ST: transition の終了
+-- - C: 現在状態
+-- - Q, S: 作業用の状態とシンボル
+-- - T: 仮想テープ
+--
 charS :: S -> Char
 charS B  = '_'
 charS I  = '1'

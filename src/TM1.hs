@@ -91,9 +91,11 @@ instance TuringMachine TM1 where
   type State  TM1 = Q
   type Symbol TM1 = Sym
 
+  states  _ = [Carry, Halt]
+  symbols _ = [Zero, One, Blank]
+
   initialState _ = Carry
   blankSymbol  _ = Blank
-
   transition _ q s = case lookup (q, s) tm1 of
     Just (q', s', Left)  -> Just (q', s', UTM.L)
     Just (q', s', Right) -> Just (q', s', UTM.R)
