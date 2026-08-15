@@ -62,8 +62,11 @@ encodeDirection UTM.R = UTM.I
 
 encodeVirtualTape :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
                   => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> [UTM.S]
-encodeVirtualTape tm (ls, h, rs)
-  = reverse (map (encodeSymbol tm) ls) ++ [encodeHead tm h] ++ map (encodeSymbol tm) rs
+encodeVirtualTape tm (ls, h, rs) = buffer ++ cells
+  where cells  = reverse (map (encodeSymbol tm) ls) ++ [encodeHead tm h] ++ map (encodeSymbol tm) rs
+        -- 左端に伸びるためのバッファを事前追加。
+        -- TODO: 境界を超えて左に伸びた場合の処理をどうするか検討する必要がある。
+        buffer = replicate (length cells) UTM.B
 
 encode :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
        => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> UTM.Tape
