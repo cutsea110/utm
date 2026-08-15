@@ -104,7 +104,15 @@ data A = Move D
        | Nop
        deriving (Show, Eq)
 
-data Q = S Int
+data HaltReason
+  = TargetHalted
+  | VirtualTapeLeftBoundaryExceeded
+  deriving (Show, Eq)
+
+-- | UTM の制御状態。'Halt' 状態には遷移を定義しない。
+data Q
+  = S Int
+  | Halt HaltReason
        deriving (Show, Eq)
 
 type Delta = [((Q, S), (Q, A))]

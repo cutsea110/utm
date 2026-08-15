@@ -1,4 +1,4 @@
-module UTMEval (eval) where
+module UTMEval (eval, run) where
 
 import qualified UTM
 
@@ -24,13 +24,22 @@ move :: UTM.D -> UTM.Tape -> UTM.Tape
 move UTM.L = moveL
 move UTM.R = moveR
 
-exec :: UTM.Delta -> (UTM.Q, UTM.Tape) -> UTM.Tape
-exec delta (q, tape@(ls, h, rs)) =
+exec :: UTM.Delta -> (UTM.Q, UTM.Tape) -> (UTM.Q, UTM.Tape)
+exec delta config@(q, tape@(ls, h, rs)) =
   case lookup (q, h) delta of
     Just (q', UTM.Write s) -> exec delta (q', (ls, s, rs))
     Just (q', UTM.Move d)  -> exec delta (q', move d (ls, h, rs))
     Just (q', UTM.Nop)     -> exec delta (q', tape)
-    Nothing                -> tape
+    Nothing                -> config
+
+{-| プログラムを停止するまで実行し、最終状態とテープを返す。
+遷移が定義されていない状態で停止するため、呼び出し側は停止状態を観察できる。
+
+>>> run UTM.addOne ([], UTM.I, [])
+(S 2,([],I,[O]))
+-}
+run :: UTM.Program -> UTM.Tape -> (UTM.Q, UTM.Tape)
+run (state, delta) tape = exec delta (state, tape)
 
 eval :: (UTM.Q, UTM.Delta) -> UTM.Tape -> UTM.Tape
-eval (state, delta) tape = exec delta (state, tape)
+eval program tape = snd (run program tape)

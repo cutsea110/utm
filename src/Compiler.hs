@@ -1,8 +1,8 @@
 module Compiler where
 
-import UTM (Q(..), Delta, A(..), S(..), D(..), Tape, showTape
+import UTM (Q(..), HaltReason(..), Delta, A(..), S(..), D(..), Tape, showTape
            , allSymbols, readOnlySymbols, writableSymbols, restrictedSymbols)
-import UTMEval (eval)
+import UTMEval (eval, run)
 
 data Env = Env { state :: Int
                }
@@ -99,6 +99,19 @@ while predicate body whileInitialEnv =
                ]
 
     loop = [ ((bodyFinalState, symbol), (whileInitialState, UTM.Nop))
+           | symbol <- allSymbols
+           ]
+
+{-| 指定した理由で UTM を停止させる。
+停止状態には遷移を定義しないため、'UTMEval.run' はその理由を最終状態として返す。
+
+>>> fst (run (S 0, snd (halt UTM.VirtualTapeLeftBoundaryExceeded defEnv)) ([], UTM.B, []))
+Halt VirtualTapeLeftBoundaryExceeded
+-}
+halt :: UTM.HaltReason -> Compiler
+halt reason env0 = (next env0, code)
+  where
+    code = [ ((get env0, symbol), (UTM.Halt reason, UTM.Nop))
            | symbol <- allSymbols
            ]
 
