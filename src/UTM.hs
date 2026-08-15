@@ -26,13 +26,14 @@ data S = B  -- ^ blank
        | WS -- ^ partition work S
        | VT -- ^ virtual tape
        | TS -- ^ transition start
+       | MTS -- ^ marked transition start
        | ST -- ^ stop transition
        | SP -- ^ delta code separator
        deriving (Show, Eq)
 
 -- | allSymbols: 全てのシンボル
 allSymbols :: [S]
-allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, VT, TS, ST, SP]
+allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, VT, TS, MTS, ST, SP]
 
 -- | writableSymbols: 書き込み可能なシンボル
 writableSymbols :: [S]
@@ -44,7 +45,7 @@ restrictedSymbols = [MI, MO, HB, HI, HO]
 
 -- | readOnlySymbol: 上書き禁止部のシンボル
 readOnlySymbols :: [S]
-readOnlySymbols = [PD, PC, WQ, WS, VT, TS, ST, SP]
+readOnlySymbols = [PD, PC, WQ, WS, VT, TS, MTS, ST, SP]
 
 
 -- | utm tape format (v0 format)
@@ -77,7 +78,9 @@ readOnlySymbols = [PD, PC, WQ, WS, VT, TS, ST, SP]
 --  4. 不変条件
 --    T には仮想ヘッド記号がいつの時点でも丁度 1 個だけある。
 --    D は不変である。
---      - D はターゲット TM の遷移表を符号化した読み取り専用領域であり UTM の実行中に変更されることはない。
+--      - D はターゲット TM の遷移表を符号化した読み取り専用領域である。
+--        遷移探索中はカーソルとして TS を一時的に MTS へ置換することがあるが、
+--        対象 TM の1ステップ完了時には必ず TS へ復元する。
 --        一方 UTM の delta は Compiler が生成する実行器コードであり、ターゲット TM ごとに変わらない。
 --    Q と S は作業後に空白に戻すこと。
 --
@@ -96,6 +99,7 @@ charS WQ = 'Q'
 charS WS = 'S'
 charS VT = 'T'
 charS TS = '@'
+charS MTS = '*'
 charS ST = ';'
 charS SP = '#'
 

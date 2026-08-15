@@ -115,6 +115,30 @@ halt reason env0 = (next env0, code)
            | symbol <- allSymbols
            ]
 
+{-| 遷移探索中のカーソルとして、現在位置の 'TS' を 'MTS' に置換する。
+通常の 'write' では読み取り専用の 'TS' / 'MTS' を変更できない。
+
+>>> test markTransitionStart ([B], TS, [B])
+_@_ --> _*_
+ ^       ^
+-}
+markTransitionStart :: Compiler
+markTransitionStart = rewriteTransitionStart UTM.TS UTM.MTS
+
+{-| 'MTS' を通常の 'TS' へ復元する。
+
+>>> test unmarkTransitionStart ([B], MTS, [B])
+_*_ --> _@_
+ ^       ^
+-}
+unmarkTransitionStart :: Compiler
+unmarkTransitionStart = rewriteTransitionStart UTM.MTS UTM.TS
+
+rewriteTransitionStart :: UTM.S -> UTM.S -> Compiler
+rewriteTransitionStart from to env0 = (next env0, [((get env0, from), (get env1, UTM.Write to))])
+  where
+    env1 = next env0
+
 {-| 仮想ヘッドを左へ1セル移動する。
 'UTM.VT' に到達した場合や仮想テープ内に不正な記号があった場合は、既存の仮想ヘッドを保ったまま停止する。
 
