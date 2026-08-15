@@ -363,22 +363,19 @@ skipSeqL :: Compiler
 skipSeqL = skipSeq UTM.L
 
 {-| copyTo: 非破壊的コピー
->>> test (copyTo (R, SP)) ([I, I], I, [B, B, SP])
+>>> test (copyTo (R, SP)) ([], I, [I, I, B, B, SP])
 111__# --> 111__#111
-  ^        ^
->>> test (copyTo (R, SP)) ([O, O], O, [B, B, SP])
+^          ^
+>>> test (copyTo (R, SP)) ([], O, [O, O, B, B, SP])
 000__# --> 000__#000
-  ^        ^
->>> test (copyTo (L, SP)) ([I, O, I, B, B, B, B, SP], I, [B, B, SP])
+^          ^
+>>> test (copyTo (L, SP)) ([B, B, B, B, SP], I, [O, I, I, B, B, SP])
 #____1011__# --> #10111011__#
-        ^             ^
+     ^                ^
 -}
 copyTo :: (UTM.D, UTM.S) -> Compiler
-copyTo (markerDirection, marker) = toMostSignificant `compose` copyBits `compose` restoreSource
+copyTo (markerDirection, marker) = copyBits `compose` restoreSource
   where
-    toMostSignificant :: Compiler
-    toMostSignificant = skipSeqL `compose` moveR
-
     copyBits :: Compiler
     copyBits = while isPlainBit copyBit
 
