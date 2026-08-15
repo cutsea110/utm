@@ -22,7 +22,7 @@ type Tape = ([Sym], Sym, [Sym])
 initialState :: Q
 initialState = Carry
 
-{- | 加算
+{- | 整数に対して1を加算するチューリングマシンのプログラム
   1. 1 + 1 = 10
   2. 1 + 0 = 01
   3. 0 + 1 = 01
