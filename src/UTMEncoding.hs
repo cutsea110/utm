@@ -204,18 +204,9 @@ stateCapacity tm = case TM.states tm of
 symbolCapacity :: TM.TuringMachine tm => tm -> Int
 symbolCapacity _ = 1
 
-splitBy :: Eq a => a -> [a] -> [[a]]
-splitBy _ [] = []
-splitBy sep xs
-  = let (ys, zs) = break (== sep) xs
-    in ys : case zs of
-              [] -> []
-              (_:ws) -> splitBy sep ws
-
-
 decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
                     => tm -> UTM.Tape -> (TM.State tm, [TM.Symbol tm])
-decodeConfiguration tm tape@(ls, h, rs) = (currentState, virtualTape)
+decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
   where
     codebook = makeCodebook tm
     stateDict = map swap $ stateTable codebook
@@ -232,10 +223,9 @@ decodeConfiguration tm tape@(ls, h, rs) = (currentState, virtualTape)
     currentState = case lookup key stateDict of
         Just s  -> s
         Nothing -> error $ "decodeConfiguration: state not found in codebook: " ++ show key
-      where key = tail $ init $ dropWhile (/= UTM.PC) $ takeWhile (/= UTM.WQ) tape' -- tail で PC, init で B 終端をそれぞれ除去
+      where key = drop 1 $ init $ dropWhile (/= UTM.PC) $ takeWhile (/= UTM.WQ) tape' -- drop 1 で PC, init で B 終端をそれぞれ除去
     virtualTape = map convert raw
-      where raw = tail $ dropWhile (/= UTM.VT) tape'
-            decoded = map convert raw
+      where raw = drop 1 $ dropWhile (/= UTM.VT) tape'
             convert c = case lookup c symbolDict of
               Just s  -> s
               Nothing -> error $ "decodeConfiguration: symbol not found in codebook: " ++ show c
