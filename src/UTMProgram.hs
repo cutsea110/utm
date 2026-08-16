@@ -116,7 +116,7 @@ findTransition = moveTo (UTM.L, UTM.PD)
 
     matchQ :: Compiler
     matchQ = moveAfter (UTM.R, UTM.PC)
-             `compose` matchToUntil (UTM.L, UTM.MTS) UTM.SP
+             `compose` matchUntil UTM.B (UTM.L, UTM.MTS) UTM.SP
              `compose` branch (== UTM.SP) matchS nextTransition
 
     matchS :: Compiler
