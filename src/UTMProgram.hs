@@ -11,14 +11,23 @@ forever = while (const True)
 >>> import UTMEncoding
 >>> import UTMEval
 >>> let (_, delta) = utm defEnv
->>> let tape = encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])
+>>> let tape1 = encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])
 
 TM1 は 1 インクリメントするチューリングマシンで、11を与えて100を得るようテープをセットしたもの。
 これをエンコードして UTM のテープに変換し、UTM の delta 関数を使ってシミュレーションする。
 
->>> test utm tape
+>>> test utm tape1
 D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C0_Q__S__T____1i__ --> D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C1_Q__S__T___1o0__
 ^                                                                                                  ^
+
+TM2 はハシゴを登るチューリングマシンで、空の足場にマークをつけて上へ登り、マークのついた足場に対して上へ移動し、終わりのついた足場に対して下へ移動して停止する。
+これをエンコードして UTM のテープに変換し、UTM の delta 関数を使ってシミュレーションする。
+
+>>> import TM2
+>>> let tape2 = encode TM2 ([Empty],Empty,[Mark,Empty,Done])
+>>> test utm tape2
+D@0#_#1#0#1;@1#_#1#0#1;@1#0#1#0#1;@1#1#10#1#0;C0__Q___S__T______^0_1 --> D@0#_#1#0#1;@1#_#1#0#1;@1#0#1#0#1;@1#1#10#1#0;C10_Q___S__T______00o1
+^                                                                                                                                ^
 -}
 utm :: Compiler
 utm = forever utmStep
