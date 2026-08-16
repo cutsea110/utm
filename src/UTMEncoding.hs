@@ -211,6 +211,20 @@ VT 左の確保用バッファと両端の余分な空白は、ターゲット�
 >>> import TM1
 >>> decodeConfiguration TM1 (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank]))
 (Carry,([One],One,[]))
+
+ヘッド位置と右側の非空白記号も復元する。
+
+>>> decodeConfiguration TM1 (encode TM1 ([], TM1.Zero, [TM1.One, TM1.Blank]))
+(Carry,([],Zero,[One]))
+
+UTM の1ステップ後は、書込みとヘッド移動を含む構成を復元する。
+
+>>> import Compiler (defEnv)
+>>> import UTMProgram (utmStep)
+>>> import qualified UTMEval
+>>> let stepProgram = (UTM.S 0, snd (utmStep defEnv))
+>>> decodeConfiguration TM1 (UTMEval.eval stepProgram (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])))
+(Carry,([],One,[Zero]))
 -}
 decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
                     => tm -> UTM.Tape -> (TM.State tm, ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]))
