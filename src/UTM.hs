@@ -112,6 +112,7 @@ data HaltReason
   = TargetHalted
   | VirtualTapeLeftBoundaryExceeded
   | InvalidVirtualTape
+  | InvalidTransitionTable
   deriving (Show, Eq)
 
 -- | UTM の制御状態。'Halt' 状態には遷移を定義しない。

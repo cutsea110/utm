@@ -1,7 +1,7 @@
 module Compiler where
 
 import UTM (Q(..), HaltReason(..), Delta, A(..), S(..), D(..), Tape, showTape
-           , allSymbols, readOnlySymbols, writableSymbols, restrictedSymbols)
+           , allSymbols, writableSymbols, restrictedSymbols)
 import UTMEval (eval, run)
 
 data Env = Env { state :: Int
@@ -217,9 +217,7 @@ erase d = while p (write UTM.B `compose` move d)
     p :: UTM.S -> Bool
     p c | c == UTM.B                 = False
         | c `elem` writableSymbols   = True
-        | c `elem` readOnlySymbols   = error $ "try to erase read-only symbol: " ++ show c
-        | c `elem` restrictedSymbols = error $ "try to erase restricted symbol: " ++ show c
-        | otherwise                  = error $ "unexpected case: " ++ show c
+        | otherwise                  = False
 
 {-| eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止
 >>> test eraseR ([I, I], I, [I, I])
@@ -310,8 +308,7 @@ moveAfter target = moveTo target `compose` moveR
 isPlainBit :: S -> Bool
 isPlainBit UTM.I = True
 isPlainBit UTM.O = True
-isPlainBit UTM.B = False
-isPlainBit s     = error $ "unexpected symbol in bit sequence: " ++ show s
+isPlainBit _     = False
 
 skipSeq :: UTM.D -> Compiler
 skipSeq direction = while isPlainBit (move direction)
@@ -374,10 +371,21 @@ skipSeqL = skipSeq UTM.L
      ^                ^
 -}
 copyTo :: (UTM.D, UTM.S) -> Compiler
-copyTo (markerDirection, marker) = copyBits `compose` restoreSource
+copyTo target = copyToUntil target UTM.B
+
+{-| 'copyTo' のコピー元終端記号を指定する版。
+コピー元は現在位置を最上位桁とするビット列で、'sourceEnd' の直前までを
+コピーする。
+
+>>> test (copyToUntil (R, WQ) SP) ([], I, [O, SP, WQ])
+10#Q --> 10#Q10
+^        ^
+-}
+copyToUntil :: (UTM.D, UTM.S) -> UTM.S -> Compiler
+copyToUntil (markerDirection, marker) sourceEnd = copyBits `compose` restoreSource
   where
     copyBits :: Compiler
-    copyBits = while isPlainBit copyBit
+    copyBits = while isSourceBit copyBit
 
     copyBit :: Compiler
     copyBit = branch (== UTM.I) copyI copyO
@@ -410,6 +418,11 @@ copyTo (markerDirection, marker) = copyBits `compose` restoreSource
     isMark UTM.MI = True
     isMark UTM.MO = True
     isMark _      = False
+
+    isSourceBit :: UTM.S -> Bool
+    isSourceBit s
+      | s == sourceEnd = False
+      | otherwise      = isPlainBit s
 
     opposite :: UTM.D -> UTM.D
     opposite UTM.L = UTM.R
@@ -538,12 +551,7 @@ matchToUntil (markerDirection, marker) targetEnd = compareBits `compose` finish
     isTargetMark :: UTM.S -> Bool
     isTargetMark UTM.HI = True
     isTargetMark UTM.HO = True
-    isTargetMark UTM.I  = False
-    isTargetMark UTM.O  = False
-    isTargetMark UTM.B  = False
-    isTargetMark s
-      | s == targetEnd  = False
-    isTargetMark s      = error $ "matchTo: unexpected target symbol: " ++ show s
+    isTargetMark _      = False
 
     opposite :: UTM.D -> UTM.D
     opposite UTM.L = UTM.R

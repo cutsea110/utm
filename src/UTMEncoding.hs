@@ -162,7 +162,7 @@ encodeVirtualTapeWith codebook (ls, h, rs) = buffer ++ cells
 {-| UTM のテープにエンコードする
 >>> import TM1
 >>> encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])
-([],PD,[TS,O,SP,O,SP,I,SP,I,SP,I,ST,TS,O,SP,I,SP,O,SP,O,SP,O,ST,TS,O,SP,B,SP,I,SP,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,VT,B,B,B,B,I,HI,B,B])
+([],PD,[TS,O,SP,O,SP,I,SP,I,SP,I,ST,TS,O,SP,I,SP,O,SP,O,SP,O,ST,TS,O,SP,B,SP,I,SP,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,B,VT,B,B,B,B,I,HI,B,B])
 -}
 encode :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
        => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> UTM.Tape
@@ -178,7 +178,7 @@ encode tm input = fromSymbols $
       let code = encodeStateWith codebook (TM.initialState tm)
       in code ++ replicate (stateWidth codebook + 1 - length code) UTM.B -- +1 は終端記号として使う B
     emptyStateArea  = replicate (stateWidth codebook + 1) UTM.B          -- +1 は終端記号として使う B
-    emptySymbolArea = replicate (symbolCapacity tm) UTM.B
+    emptySymbolArea = replicate (symbolCapacity tm + 1) UTM.B            -- +1 は終端記号として使う B
 
 -- | UTM のヘッダ初期位置にセットする薄い補助関数
 fromSymbols :: [UTM.S] -> UTM.Tape
