@@ -9,6 +9,7 @@ data Codebook q s = Codebook
   , symbolTable :: [(s, UTM.S)]
   , stateWidth  :: Int
   }
+  deriving (Show, Eq)
 
 makeCodebook :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
              => tm -> Codebook (TM.State tm) (TM.Symbol tm)
@@ -202,3 +203,39 @@ stateCapacity tm = case TM.states tm of
 -}
 symbolCapacity :: TM.TuringMachine tm => tm -> Int
 symbolCapacity _ = 1
+
+splitBy :: Eq a => a -> [a] -> [[a]]
+splitBy _ [] = []
+splitBy sep xs
+  = let (ys, zs) = break (== sep) xs
+    in ys : case zs of
+              [] -> []
+              (_:ws) -> splitBy sep ws
+
+
+decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
+                    => tm -> UTM.Tape -> (TM.State tm, [TM.Symbol tm])
+decodeConfiguration tm tape@(ls, h, rs) = (currentState, virtualTape)
+  where
+    codebook = makeCodebook tm
+    stateDict = map swap $ stateTable codebook
+    symbolDict = base ++ heads
+      where base = map swap $ symbolTable codebook
+            heads = [(conv k, v) | (k, v) <- base]
+              where  conv UTM.B = UTM.HB
+                     conv UTM.I = UTM.HI
+                     conv UTM.O = UTM.HO
+                     conv s     = error $ "decodeConfiguration: invalid symbol for head: " ++ show s
+    swap (k, v) = (v, k)
+
+    tape' = reverse ls ++ h:rs
+    currentState = case lookup key stateDict of
+        Just s  -> s
+        Nothing -> error $ "decodeConfiguration: state not found in codebook: " ++ show key
+      where key = tail $ init $ dropWhile (/= UTM.PC) $ takeWhile (/= UTM.WQ) tape' -- tail で PC, init で B 終端をそれぞれ除去
+    virtualTape = map convert raw
+      where raw = tail $ dropWhile (/= UTM.VT) tape'
+            decoded = map convert raw
+            convert c = case lookup c symbolDict of
+              Just s  -> s
+              Nothing -> error $ "decodeConfiguration: symbol not found in codebook: " ++ show c
