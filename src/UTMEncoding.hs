@@ -205,7 +205,7 @@ symbolCapacity :: TM.TuringMachine tm => tm -> Int
 symbolCapacity _ = 1
 
 decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
-                    => tm -> UTM.Tape -> (TM.State tm, [TM.Symbol tm])
+                    => tm -> UTM.Tape -> (TM.State tm, ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]))
 decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
   where
     codebook = makeCodebook tm
@@ -224,8 +224,11 @@ decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
         Just s  -> s
         Nothing -> error $ "decodeConfiguration: state not found in codebook: " ++ show key
       where key = drop 1 $ init $ dropWhile (/= UTM.PC) $ takeWhile (/= UTM.WQ) tape' -- drop 1 で PC, init で B 終端をそれぞれ除去
-    virtualTape = map convert raw
+    virtualTape = (reverse (map convert ls'), convert h', map convert rs')
       where raw = drop 1 $ dropWhile (/= UTM.VT) tape'
+            (ls', h', rs') = case break (`elem` [UTM.HB, UTM.HI, UTM.HO]) raw of
+                  (xs, y:ys) -> (xs, y, ys)
+                  _          -> error $ "decodeConfiguration: virtual tape head not found in tape: " ++ show raw
             convert c = case lookup c symbolDict of
               Just s  -> s
               Nothing -> error $ "decodeConfiguration: symbol not found in codebook: " ++ show c
