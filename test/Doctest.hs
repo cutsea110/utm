@@ -12,4 +12,5 @@ main = doctest
   , "src/UTMProgram.hs"
   , "src/TuringMachine.hs"
   , "src/TM1.hs"
+  , "src/TM2.hs"
   ]
