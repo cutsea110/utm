@@ -1,6 +1,6 @@
 module UTMEncoding where
 
-import Data.List (unfoldr)
+import Data.List (dropWhileEnd, unfoldr)
 import qualified UTM
 import qualified TuringMachine as TM
 
@@ -204,31 +204,57 @@ stateCapacity tm = case TM.states tm of
 symbolCapacity :: TM.TuringMachine tm => tm -> Int
 symbolCapacity _ = 1
 
-decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
+{-| UTM テープからターゲット TM の論理構成を復元する。
+VT 左の確保用バッファと両端の余分な空白は、ターゲットテープの意味論に
+影響しないため正規化して除去する。
+
+>>> import TM1
+>>> decodeConfiguration TM1 (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank]))
+(Carry,([One],One,[]))
+-}
+decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
                     => tm -> UTM.Tape -> (TM.State tm, ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]))
 decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
   where
     codebook = makeCodebook tm
-    stateDict = map swap $ stateTable codebook
-    symbolDict = base ++ heads
-      where base = map swap $ symbolTable codebook
-            heads = [(conv k, v) | (k, v) <- base]
-              where  conv UTM.B = UTM.HB
-                     conv UTM.I = UTM.HI
-                     conv UTM.O = UTM.HO
-                     conv s     = error $ "decodeConfiguration: invalid symbol for head: " ++ show s
+    tape' = reverse ls ++ h:rs
+
+    currentState = case lookup stateCode (map swap (stateTable codebook)) of
+        Just s  -> s
+        Nothing -> error $ "decodeConfiguration: state not found in codebook: " ++ show stateCode
+      where
+        stateCode = takeWhile isBit (after UTM.PC)
+
+    virtualTape = normalizeTape (TM.blankSymbol tm)
+      (reverse (map decodeSymbol leftCells), decodeHead headCell, map decodeSymbol rightCells)
+      where
+        (leftCells, headCell, rightCells) = case break isHead (after UTM.VT) of
+          (xs, y:ys) -> (xs, y, ys)
+          _          -> error "decodeConfiguration: virtual tape head not found"
+
+    decodeSymbol s = case lookup s (map swap (symbolTable codebook)) of
+      Just symbol -> symbol
+      Nothing -> error $ "decodeConfiguration: invalid virtual tape symbol: " ++ show s
+
+    decodeHead UTM.HB = decodeSymbol UTM.B
+    decodeHead UTM.HI = decodeSymbol UTM.I
+    decodeHead UTM.HO = decodeSymbol UTM.O
+    decodeHead s      = error $ "decodeConfiguration: invalid virtual tape head: " ++ show s
+
+    after marker = drop 1 (dropWhile (/= marker) tape')
+
+    isBit UTM.I = True
+    isBit UTM.O = True
+    isBit _     = False
+
+    isHead UTM.HB = True
+    isHead UTM.HI = True
+    isHead UTM.HO = True
+    isHead _      = False
+
     swap (k, v) = (v, k)
 
-    tape' = reverse ls ++ h:rs
-    currentState = case lookup key stateDict of
-        Just s  -> s
-        Nothing -> error $ "decodeConfiguration: state not found in codebook: " ++ show key
-      where key = drop 1 $ init $ dropWhile (/= UTM.PC) $ takeWhile (/= UTM.WQ) tape' -- drop 1 で PC, init で B 終端をそれぞれ除去
-    virtualTape = (reverse (map convert ls'), convert h', map convert rs')
-      where raw = drop 1 $ dropWhile (/= UTM.VT) tape'
-            (ls', h', rs') = case break (`elem` [UTM.HB, UTM.HI, UTM.HO]) raw of
-                  (xs, y:ys) -> (xs, y, ys)
-                  _          -> error $ "decodeConfiguration: virtual tape head not found in tape: " ++ show raw
-            convert c = case lookup c symbolDict of
-              Just s  -> s
-              Nothing -> error $ "decodeConfiguration: symbol not found in codebook: " ++ show c
+-- | 両端の有限表現上の余分な空白を除去する。
+normalizeTape :: Eq s => s -> ([s], s, [s]) -> ([s], s, [s])
+normalizeTape blank (ls, h, rs) =
+  (dropWhileEnd (== blank) ls, h, dropWhileEnd (== blank) rs)
