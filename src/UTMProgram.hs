@@ -3,6 +3,26 @@ module UTMProgram where
 import Compiler
 import UTM
 
+forever :: Compiler -> Compiler
+forever = while (const True)
+
+{-| UTM の実行器コードを生成する。つまり万能チューリングマシンの delta 関数を生成する。
+>>> import TM1
+>>> import UTMEncoding
+>>> import UTMEval
+>>> let (_, delta) = utm defEnv
+>>> let tape = encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])
+
+TM1 は 1 インクリメントするチューリングマシンで、11を与えて100を得るようテープをセットしたもの。
+これをエンコードして UTM のテープに変換し、UTM の delta 関数を使ってシミュレーションする。
+
+>>> test utm tape
+D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C0_Q__S__T____1i__ --> D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C1_Q__S__T___1o0__
+^                                                                                                  ^
+-}
+utm :: Compiler
+utm = forever utmStep
+
 {-| ターゲット TM の1ステップをシミュレートする。
 
 >>> import TM1
@@ -68,15 +88,15 @@ D@1#1#1#_#1;@0#1#0#_#1;C0_Q_S1 --> D@1#1#1#_#1;*0#1#0#_#1;C0_Q0S1
 候補がなければ、すべての 'MTS' を戻して正常終了する。
 
 >>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, B, SP, I, SP, O, SP, O, TS, PD], I, [])
-D@0#0#1#_#1;C0_Q_S1 --> D@0#0#1#_#1;C0_Q_S1
-                  ^                 ^
+D@0#0#1#_#1;C0_Q_S1 --> D@0#0#1#_#1;C0_Q_S__
+                  ^                        ^
 -}
 findTransition :: Compiler
 findTransition = moveTo (UTM.L, UTM.PD)
                  `compose` moveR
                  `compose` while (== UTM.TS) tryTransition
                  `compose`
-                 branch (== UTM.PC) (halt UTM.TargetHalted)
+                 branch (== UTM.PC) targetHalted
                    (branch (== UTM.MTS) transitionMatched
                      (halt UTM.InvalidTransitionTable))
 
@@ -115,6 +135,11 @@ findTransition = moveTo (UTM.L, UTM.PD)
 
     copyQ :: Compiler
     copyQ = copyToUntil (UTM.R, UTM.WQ) UTM.SP
+
+    targetHalted :: Compiler
+    targetHalted = moveAfter (UTM.R, UTM.WS)
+                   `compose` eraseR
+                   `compose` halt UTM.TargetHalted
 
 writeVirtualSymbol :: Compiler
 writeVirtualSymbol = moveTo (UTM.L, UTM.MTS)
