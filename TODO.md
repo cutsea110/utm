@@ -18,7 +18,7 @@
 - [x] 仮想ヘッド移動を `HVC -> VC` / `VC -> HVC` のセル開始記号の置換として実装する
 - [x] `decodeConfiguration` を v1 の仮想テープセル形式へ対応させる
 - [ ] 4記号以上を持つターゲット TM を追加し、`encode -> utm -> decodeConfiguration` の統合テストを書く
-- [ ] 既存の TM1 と doctest が v1 形式で通ることを確認する
+- [x] 既存の TM1 と doctest が v1 形式で通ることを確認する
 
 ## 仮想テープを左へ無限に拡張する
 
