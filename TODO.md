@@ -5,18 +5,18 @@
 - [x] v1 の仮想テープセル形式を決め、`UTM.hs` に不変条件を記述する
   - `VC bits...` を通常セル、`HVC bits...` を仮想ヘッド付きセルとする
   - 記号コードはターゲット TM ごとの固定幅とする
-- [ ] `UTM.S` に `VC` / `HVC` を追加し、構造記号として書込み制約を定義する
-- [ ] `Codebook` の記号対応を `Symbol tm -> [UTM.S]` へ変更する
-- [ ] `symbolWidth` を実装する (`max 1 (ceil(log2 |Σ|))`)
-- [ ] D の `a` / `b` フィールドを固定幅ビット列 + `SP` 終端へ変更する
-- [ ] `WS` を固定幅ビット列 + 終端 `B` の作業領域へ変更する
-- [ ] `encodeVirtualTape` を `VC` / `HVC` + 固定幅ビット列のセル列へ変更する
-- [ ] 仮想テープの左右に空白セルのバッファを確保する
+- [x] `UTM.S` に `VC` / `HVC` を追加し、構造記号として書込み制約を定義する
+- [x] `Codebook` の記号対応を `Symbol tm -> [UTM.S]` へ変更する
+- [x] `symbolWidth` を実装する (`max 1 (ceil(log2 |Σ|))`)
+- [x] D の `a` / `b` フィールドを固定幅ビット列 + `SP` 終端へ変更する
+- [x] `WS` を固定幅ビット列 + 終端 `B` の作業領域へ変更する
+- [x] `encodeVirtualTape` を `VC` / `HVC` + 固定幅ビット列のセル列へ変更する
+- [x] 仮想テープの左右に空白セルのバッファを確保する
 - [ ] `copyCurrentHeadToWS` を、`HVC` セルのビット列を `WS` へコピーする実装へ変更する
 - [ ] `findTransition` の `a` と `WS` の照合を `matchUntil` によるビット列照合へ変更する
 - [ ] `writeVirtualSymbol` を、D の `b` ビット列で `HVC` セル本体を上書きする実装へ変更する
 - [ ] 仮想ヘッド移動を `HVC -> VC` / `VC -> HVC` のセル開始記号の置換として実装する
-- [ ] `decodeConfiguration` を v1 の仮想テープセル形式へ対応させる
+- [x] `decodeConfiguration` を v1 の仮想テープセル形式へ対応させる
 - [ ] 4記号以上を持つターゲット TM を追加し、`encode -> utm -> decodeConfiguration` の統合テストを書く
 - [ ] 既存の TM1 と doctest が v1 形式で通ることを確認する
 

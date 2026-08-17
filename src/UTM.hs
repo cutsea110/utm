@@ -9,17 +9,15 @@ data D = R -- ^ move right
 -- マークはコピーと比較(検索)で使うだけでそれ以外の箇所では使わない。
 -- コピーと比較関数の中だけで存在しうるものとする。
 -- またコピーと比較が目的なので通常はIとOのみ対象でBをマークすることはない。Bを見た時点で通常処理は終了を意味する。
--- 一方ヘッドはBを指すのでHBが存在する。
--- 仮想ヘッドはエンコードされたチューリングマシンのヘッドなので仮想テープエリアVT内のみ移動する。
 -- utm のヘッドは ([S],S,[S]) の第2要素位置で表現されるものでテープ全域を走査しうる。
 data S = B  -- ^ blank
        | I  -- ^ 1
        | O  -- ^ 0
        | MI -- ^ marked 1
        | MO -- ^ marked 0
-       | HB -- ^ head on blank
-       | HI -- ^ head on 1
-       | HO -- ^ head on 0
+       | HB -- ^ TODO: remove after VC supported
+       | HI -- ^ comparison target marked 1
+       | HO -- ^ comparison target marked 0
        | PD -- ^ partition delta
        | PC -- ^ partition current state
        | WQ -- ^ partition work Q
@@ -29,11 +27,13 @@ data S = B  -- ^ blank
        | MTS -- ^ marked transition start
        | ST -- ^ stop transition
        | SP -- ^ delta code separator
+       | VC -- ^ virtual tape cell header
+       | HVC -- ^ virtual tape cell header with target TM's virtual head
        deriving (Show, Eq)
 
 -- | allSymbols: 全てのシンボル
 allSymbols :: [S]
-allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, VT, TS, MTS, ST, SP]
+allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, VT, TS, MTS, ST, SP, VC, HVC]
 
 -- | writableSymbols: 書き込み可能なシンボル
 writableSymbols :: [S]
@@ -45,7 +45,7 @@ restrictedSymbols = [MI, MO, HB, HI, HO]
 
 -- | readOnlySymbol: 上書き禁止部のシンボル
 readOnlySymbols :: [S]
-readOnlySymbols = [PD, PC, WQ, WS, VT, TS, MTS, ST, SP]
+readOnlySymbols = [PD, PC, WQ, WS, VT, TS, MTS, ST, SP, VC, HVC]
 
 
 -- | utm tape format (v0 format)
@@ -92,23 +92,25 @@ readOnlySymbols = [PD, PC, WQ, WS, VT, TS, MTS, ST, SP]
 --      - WS は同じ固定幅のコードを保持し、終端 B を持つ。
 --
 charS :: S -> Char
-charS B  = '_'
-charS I  = '1'
-charS O  = '0'
-charS MI = 'I'
-charS MO = 'O'
-charS HB = '^'
-charS HI = 'i'
-charS HO = 'o'
-charS PD = 'D'
-charS PC = 'C'
-charS WQ = 'Q'
-charS WS = 'S'
-charS VT = 'T'
-charS TS = '@'
-charS MTS = '*'
-charS ST = ';'
-charS SP = '#'
+charS B   = '_'
+charS I   = '1'
+charS O   = '0'
+charS MI  = 'I'
+charS MO  = 'O'
+charS HB  = '^'
+charS HI  = 'i'
+charS HO  = 'o'
+charS PD  = 'D'
+charS PC  = 'C'
+charS WQ  = 'Q'
+charS WS  = 'S'
+charS VT  = 'T'
+charS TS  = '@'
+charS MTS  = '*'
+charS ST  = ';'
+charS SP  = '#'
+charS VC  = '|'
+charS HVC = '/'
 
 data A = Move D
        | Write S

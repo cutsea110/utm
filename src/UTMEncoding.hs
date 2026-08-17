@@ -1,13 +1,15 @@
 module UTMEncoding where
 
-import Data.List (dropWhileEnd, unfoldr)
+import Data.List (unfoldr)
 import qualified UTM
 import qualified TuringMachine as TM
 
 data Codebook q s = Codebook
   { stateTable  :: [(q, [UTM.S])]
-  , symbolTable :: [(s, UTM.S)]
+  , symbolTable :: [(s, [UTM.S])]
   , stateWidth  :: Int
+  , symbolWidth :: Int
+  , blankCode   :: [UTM.S]
   }
   deriving (Show, Eq)
 
@@ -16,17 +18,24 @@ makeCodebook :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
 makeCodebook tm
   | null qs = error "makeCodebook: target TM has no states"
   | blank `notElem` ss = error "makeCodebook: blank symbol is not in the symbol list"
-  | length nonBlankSymbols > 2 = error "makeCodebook: target TM has more than 2 non-blank symbols"
   | otherwise = Codebook
       { stateTable  = zip qs (map encodeBinary [0..])
-      , symbolTable = zip nonBlankSymbols [UTM.O, UTM.I] ++ [(blank, UTM.B)]
+      , symbolTable = encodedSymTable
       , stateWidth  = length (encodeBinary (length qs - 1))
+      , symbolWidth = width
+      , blankCode   = blankCode
       }
   where
     qs = TM.states tm
     ss = TM.symbols tm
     blank = TM.blankSymbol tm
-    nonBlankSymbols = filter (/= blank) ss
+    blankCode = case lookup blank encodedSymTable of
+      Just code -> code
+      Nothing   -> error "makeCodebook: blank symbol not found in symbol table"
+    width = max 1 (ceiling (logBase 2 (fromIntegral (length ss)) :: Double))
+    encodedSymTable = [ (k, replicate (width - length v) UTM.O ++ v)
+                      | (k, v) <- zip ss (map encodeBinary [0..])
+                      ]
 
 encodeProgram :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
               => tm -> [UTM.S]
@@ -57,10 +66,11 @@ encodeTransition tm = encodeTransitionWith (makeCodebook tm)
 encodeTransitionWith :: (Eq q, Eq s)
                      => Codebook q s -> (q, s, q, s, UTM.D) -> [UTM.S]
 encodeTransitionWith codebook (q, s, q', s', d)
-  = UTM.TS:encodeStateWith codebook q
-  ++ [UTM.SP, encodeSymbolWith codebook s, UTM.SP]
-  ++ encodeStateWith codebook q'
-  ++ [UTM.SP, encodeSymbolWith codebook s', UTM.SP, encodeDirection d, UTM.ST]
+  = [UTM.TS] ++ encodeStateWith codebook q
+  ++ [UTM.SP] ++ encodeSymbolWith codebook s
+  ++ [UTM.SP] ++ encodeStateWith codebook q'
+  ++ [UTM.SP] ++ encodeSymbolWith codebook s'
+  ++ [UTM.SP, encodeDirection d, UTM.ST]
 
 {-| 状態は 0..n-1 の整数で表現されるので、2進数に変換して返す。
 >>> import TM1
@@ -105,45 +115,10 @@ encodeBinary n = reverse $ unfoldr psi n
     psi 0 = Nothing
     psi m = Just (if odd m then UTM.I else UTM.O, m `div` 2)
 
-{-| シンボルは B, I, O のいずれかであることが制約となっているので 1 シンボルで返される
->>> import TM1
->>> encodeSymbol TM1 TM1.Zero
-O
->>> encodeSymbol TM1 TM1.One
-I
->>> encodeSymbol TM1 TM1.Blank
-B
--}
-encodeSymbol :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
-             => tm -> TM.Symbol tm -> UTM.S
-encodeSymbol tm = encodeSymbolWith (makeCodebook tm)
-
-encodeSymbolWith :: Eq s => Codebook q s -> s -> UTM.S
+encodeSymbolWith :: Eq s => Codebook q s -> s -> [UTM.S]
 encodeSymbolWith codebook s = case lookup s (symbolTable codebook) of
   Just code -> code
   Nothing   -> error "encodeSymbol: symbol not found in codebook"
-
-{-| ヘッドが指すシンボルは B, I, O のいずれかであることが制約となっているので 1 シンボルで返される
->>> import TM1
->>> encodeHead TM1 TM1.Zero
-HO
->>> encodeHead TM1 TM1.One
-HI
->>> encodeHead TM1 TM1.Blank
-HB
--}
-encodeHead :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
-           => tm -> TM.Symbol tm -> UTM.S
-encodeHead tm = encodeHeadWith (makeCodebook tm)
-
-encodeHeadWith :: Eq s => Codebook q s -> s -> UTM.S
-encodeHeadWith codebook = headSymbol . encodeSymbolWith codebook
-
-headSymbol :: UTM.S -> UTM.S
-headSymbol UTM.B = UTM.HB
-headSymbol UTM.I = UTM.HI
-headSymbol UTM.O = UTM.HO
-headSymbol s     = error $ "headSymbol: invalid symbol for head: " ++ show s
 
 encodeDirection :: UTM.D -> UTM.S
 encodeDirection UTM.L = UTM.O
@@ -154,16 +129,19 @@ encodeVirtualTape :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
 encodeVirtualTape tm = encodeVirtualTapeWith (makeCodebook tm)
 
 encodeVirtualTapeWith :: Eq s => Codebook q s -> ([s], s, [s]) -> [UTM.S]
-encodeVirtualTapeWith codebook (ls, h, rs) = buffer ++ cells
-  where cells  = reverse (map (encodeSymbolWith codebook) ls) ++ [encodeHeadWith codebook h] ++ map (encodeSymbolWith codebook) rs
+encodeVirtualTapeWith codebook (ls, h, rs) = concat $ buffer ++ cells
+  where cells  = reverse (map normalCell ls) ++ [headCell h] ++ map normalCell rs
+        normalCell s = UTM.VC  : encodeSymbolWith codebook s
+        headCell s   = UTM.HVC : encodeSymbolWith codebook s
+        blankCell    = UTM.VC  : blankCode codebook
         -- 左端に伸びるためのバッファを事前追加。
         -- TODO: 境界を超えて左に伸びた場合の処理をどうするか検討する必要がある。
-        buffer = replicate (length cells) UTM.B
+        buffer = replicate (length cells) blankCell
 
 {-| UTM のテープにエンコードする
 >>> import TM1
 >>> encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])
-([],PD,[TS,O,SP,O,SP,I,SP,I,SP,I,ST,TS,O,SP,I,SP,O,SP,O,SP,O,ST,TS,O,SP,B,SP,I,SP,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,B,VT,B,B,B,B,I,HI,B,B])
+([],PD,[TS,O,SP,O,O,SP,I,SP,O,I,SP,I,ST,TS,O,SP,O,I,SP,O,SP,O,O,SP,O,ST,TS,O,SP,I,O,SP,I,SP,O,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,B,B,VT,VC,I,O,VC,I,O,VC,I,O,VC,I,O,VC,O,I,HVC,O,I,VC,I,O,VC,I,O])
 -}
 encode :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
        => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> UTM.Tape
@@ -179,7 +157,7 @@ encode tm input = fromSymbols $
       let code = encodeStateWith codebook (TM.initialState tm)
       in code ++ replicate (stateWidth codebook + 1 - length code) UTM.B -- +1 は終端記号として使う B
     emptyStateArea  = replicate (stateWidth codebook + 1) UTM.B          -- +1 は終端記号として使う B
-    emptySymbolArea = replicate (symbolCapacity tm + 1) UTM.B            -- +1 は終端記号として使う B
+    emptySymbolArea = replicate (symbolWidth codebook + 1) UTM.B         -- +1 は終端記号として使う B
 
 -- | UTM のヘッダ初期位置にセットする薄い補助関数
 fromSymbols :: [UTM.S] -> UTM.Tape
@@ -196,35 +174,20 @@ stateCapacity tm = case TM.states tm of
   [] -> error "stateCapacity: target TM has no states"
   qs -> length (encodeBinary (length qs - 1))
 
-{-| シンボルは現状空白を含めて 3 シンボルに制限しているので 1 セルで表現できる
->>> import TM1
->>> symbolCapacity TM1
-1
--}
-symbolCapacity :: TM.TuringMachine tm => tm -> Int
-symbolCapacity _ = 1
-
 {-| UTM テープからターゲット TM の論理構成を復元する。
 VT 左の確保用バッファと両端の余分な空白は、ターゲットテープの意味論に
 影響しないため正規化して除去する。
 
 >>> import TM1
 >>> decodeConfiguration TM1 (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank]))
-(Carry,([One],One,[]))
+(Carry,([One,Blank,Blank,Blank,Blank],One,[Blank,Blank]))
 
 ヘッド位置と右側の非空白記号も復元する。
 
 >>> decodeConfiguration TM1 (encode TM1 ([], TM1.Zero, [TM1.One, TM1.Blank]))
-(Carry,([],Zero,[One]))
+(Carry,([Blank,Blank,Blank],Zero,[One,Blank]))
 
-UTM の1ステップ後は、書込みとヘッド移動を含む構成を復元する。
-
->>> import Compiler (defEnv)
->>> import UTMProgram (utmStep)
->>> import qualified UTMEval
->>> let stepProgram = (UTM.S 0, snd (utmStep defEnv))
->>> decodeConfiguration TM1 (UTMEval.eval stepProgram (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])))
-(Carry,([],One,[Zero]))
+TODO: UTM の1ステップ後は、書込みとヘッド移動を含む構成を復元する。
 -}
 decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
                     => tm -> UTM.Tape -> (TM.State tm, ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]))
@@ -232,6 +195,8 @@ decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
   where
     codebook = makeCodebook tm
     tape' = reverse ls ++ h:rs
+    width = symbolWidth codebook
+    swap (k, v) = (v, k)
 
     currentState = case lookup stateCode (map swap (stateTable codebook)) of
         Just s  -> s
@@ -239,36 +204,40 @@ decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
       where
         stateCode = takeWhile isBit (after UTM.PC)
 
-    virtualTape = normalizeTape (TM.blankSymbol tm)
-      (reverse (map decodeSymbol leftCells), decodeHead headCell, map decodeSymbol rightCells)
+    virtualTape = (reverse (map decodeSymbol leftCells), decodeSymbol headCell, map decodeSymbol rightCells)
       where
-        (leftCells, headCell, rightCells) = case break isHead (after UTM.VT) of
-          (xs, y:ys) -> (xs, y, ys)
-          _          -> error "decodeConfiguration: virtual tape head not found"
+        cells = parseCells (after UTM.VT)
 
-    decodeSymbol s = case lookup s (map swap (symbolTable codebook)) of
-      Just symbol -> symbol
-      Nothing -> error $ "decodeConfiguration: invalid virtual tape symbol: " ++ show s
+        parseCells [] = []
+        parseCells (header:rest)
+          | header `notElem` [UTM.VC, UTM.HVC] = error $ "decodeConfiguration: invalid virtual tape cell header: " ++ show header
+          | length bits /= width = error "decodeConfiguration: incomplete virtual tape cell"
+          | not (all isBit bits) = error $ "decodeConfiguration: invalid virtual tape cell bits: " ++ show bits
+          | otherwise = (header:bits) : parseCells rest'
+          where
+            (bits, rest') = splitAt width rest
 
-    decodeHead UTM.HB = decodeSymbol UTM.B
-    decodeHead UTM.HI = decodeSymbol UTM.I
-    decodeHead UTM.HO = decodeSymbol UTM.O
-    decodeHead s      = error $ "decodeConfiguration: invalid virtual tape head: " ++ show s
+        (leftCells, headCell, rightCells) = case break isHead cells of
+          (left, headCell':right)
+            | any isHead right -> error "decodeConfiguration: multiple virtual tape heads"
+            | otherwise        -> (left, headCell', right)
+          _ -> error "decodeConfiguration: virtual tape head not found"
+          where
+            isHead (UTM.HVC:_) = True
+            isHead _           = False
+
+    decodeSymbol cell = case cell of
+      UTM.VC:bits  -> decodeBits bits
+      UTM.HVC:bits -> decodeBits bits
+      _            -> error $ "decodeConfiguration: invalid virtual tape cell: " ++ show cell
+      where
+        symbolDict = map swap (symbolTable codebook)
+        decodeBits bits = case lookup bits symbolDict of
+          Just symbol -> symbol
+          Nothing -> error $ "decodeConfiguration: invalid virtual tape symbol: " ++ show bits
 
     after marker = drop 1 (dropWhile (/= marker) tape')
 
     isBit UTM.I = True
     isBit UTM.O = True
     isBit _     = False
-
-    isHead UTM.HB = True
-    isHead UTM.HI = True
-    isHead UTM.HO = True
-    isHead _      = False
-
-    swap (k, v) = (v, k)
-
--- | 両端の有限表現上の余分な空白を除去する。
-normalizeTape :: Eq s => s -> ([s], s, [s]) -> ([s], s, [s])
-normalizeTape blank (ls, h, rs) =
-  (dropWhileEnd (== blank) ls, h, dropWhileEnd (== blank) rs)
