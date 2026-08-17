@@ -49,29 +49,25 @@ utmStep = copyCurrentHeadToWS
           `compose` cleanupStep
 
 {-| VT にいる状態から現在の仮想ヘッドをVTから取得してWorkSにコピーする
->>> test copyCurrentHeadToWS ([O, I, B, B, WS], VT, [B,I,B,B,O,HO,B,B])
-S__10T_1__0o__ --> S0_10T_1__0o__
-     ^              ^
->>> test copyCurrentHeadToWS ([O, I, B, B, WS], VT, [B,I,B,B,O,HI,B,B])
-S__10T_1__0i__ --> S1_10T_1__0i__
-     ^              ^
->>> test copyCurrentHeadToWS ([O, I, B, I, WS], VT, [B,I,B,B,O,HB,B,B])
-S1_10T_1__0^__ --> S__10T_1__0^__
-     ^              ^
+>>> test copyCurrentHeadToWS ([B,B,B,WS], VT, [VC,I,O,I,HVC,O,I,I,VC,O,O,I])
+S___T|101/011|001 --> S011T|101/011|001
+    ^                           ^
+>>> test copyCurrentHeadToWS ([B,B,B,B,WS], VT, [VC,I,O,I,O,HVC,I,O,O,I,VC,I,I,I,I])
+S____T|1010/1001|1111 --> S1001T|1010/1001|1111
+     ^                                ^
+>>> test copyCurrentHeadToWS ([B,B,WS], VT, [VC,I,HVC,O,VC,I])
+S__T|1/0|1 --> S0_T|1/0|1
+   ^                  ^
 -}
 copyCurrentHeadToWS :: Compiler
-copyCurrentHeadToWS = findHead
-        `compose`
-          branch (== UTM.HO) (findAndSetWS UTM.O)
-            (branch (== UTM.HI) (findAndSetWS UTM.I)
-              (branch (== UTM.HB) (findAndSetWS UTM.B)
-                (halt UTM.InvalidVirtualTape)))
+copyCurrentHeadToWS = findHead `compose` moveR `compose` copyTo (UTM.L, UTM.WS)
   where
     findHead :: Compiler
-    findHead = while (`notElem` [UTM.HB, UTM.HO, UTM.HI]) moveR
-
-    findAndSetWS :: UTM.S -> Compiler
-    findAndSetWS s = while (/= UTM.WS) moveL `compose` moveR `compose` write s
+    findHead = moveAfter (UTM.R, UTM.VT)
+               `compose` while (`notElem` [UTM.HVC, UTM.B]) moveR
+               `compose` branch (== UTM.HVC) nop (halt UTM.InvalidVirtualTape)
+    nop :: Compiler
+    nop env = (env, [])
 
 {-| PD の先頭から状態遷移表を引く。
 
