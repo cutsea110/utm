@@ -22,6 +22,11 @@ type Program = [((Q, Sym), (Q, Sym, Dir))]
 
 type Tape = ([Sym], Sym, [Sym])
 
+{-| チューリングマシンのプログラム
+        1. A -> B
+        2. B -> C
+        3. C -> A
+-}
 tm3 :: Program
 tm3 = [ ((Scan, A), (Scan, B, R))
       , ((Scan, B), (Scan, C, R))
@@ -29,6 +34,14 @@ tm3 = [ ((Scan, A), (Scan, B, R))
       , ((Scan, Blank), (Halt, Blank, L))
       ]
 
+{-| チューリングマシンの1ステップの実行
+  - 入力: A, B, C のいずれかの文字列
+  - 出力: A, B, C のいずれかの文字列を右に1つずらす
+
+>>> step tm3 (Scan, ([], TM3.A, [TM3.B, TM3.C]))
+Just (Scan,([B],B,[C]))
+
+-}
 step :: Program -> (Q, Tape) -> Maybe (Q, Tape)
 step program (state, (ls, h, rs)) =
   case lookup (state, h) program of
@@ -48,6 +61,10 @@ step program (state, (ls, h, rs)) =
     cons (Blank, []) = []
     cons (x,     xs) = x : xs
 
+{-| チューリングマシンの実行
+>>> eval tm3 (Scan, ([], TM3.A, [TM3.B, TM3.C]))
+(Halt,([C,B],A,[]))
+-}
 eval:: Program -> (Q, Tape) -> (Q, Tape)
 eval program (state, tape) =
   case step program (state, tape) of
