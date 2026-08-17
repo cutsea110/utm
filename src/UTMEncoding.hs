@@ -141,7 +141,7 @@ encodeVirtualTapeWith codebook (ls, h, rs) = concat $ buffer ++ cells
 {-| UTM のテープにエンコードする
 >>> import TM1
 >>> encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])
-([],PD,[TS,O,SP,O,O,SP,I,SP,O,I,SP,I,ST,TS,O,SP,O,I,SP,O,SP,O,O,SP,O,ST,TS,O,SP,I,O,SP,I,SP,O,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,B,B,VT,VC,I,O,VC,I,O,VC,I,O,VC,I,O,VC,O,I,HVC,O,I,VC,I,O,VC,I,O])
+([],PD,[TS,O,SP,O,O,SP,I,SP,O,I,SP,I,ST,TS,O,SP,O,I,SP,O,SP,O,O,SP,O,ST,TS,O,SP,I,O,SP,I,SP,O,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,B,B,WB,I,O,B,VT,VC,I,O,VC,I,O,VC,I,O,VC,I,O,VC,O,I,HVC,O,I,VC,I,O,VC,I,O])
 -}
 encode :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
        => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> UTM.Tape
@@ -150,6 +150,7 @@ encode tm input = fromSymbols $
   ++ [UTM.PC] ++ initialStateArea
   ++ [UTM.WQ] ++ emptyStateArea
   ++ [UTM.WS] ++ emptySymbolArea
+  ++ [UTM.WB] ++ blankCode codebook ++ [UTM.B]
   ++ [UTM.VT] ++ encodeVirtualTapeWith codebook input
   where
     codebook = makeCodebook tm

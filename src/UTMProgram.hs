@@ -178,12 +178,12 @@ moveVirtualHeadByDirection = moveTo (UTM.L, UTM.MTS)
   where
     moveLeft :: Compiler
     moveLeft = moveAfter (UTM.R, UTM.VT)
-               `compose` while (`notElem` [UTM.HB, UTM.HI, UTM.HO]) moveR
+               `compose` while (/= UTM.HVC) moveR
                `compose` moveVirtualHeadL
 
     moveRight :: Compiler
     moveRight = moveAfter (UTM.R, UTM.VT)
-                `compose` while (`notElem` [UTM.HB, UTM.HI, UTM.HO]) moveR
+                `compose` while (/= UTM.HVC) moveR
                 `compose` moveVirtualHeadR
 
 {-| WQ の状態列で PC の状態列を置き換える。
