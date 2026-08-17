@@ -74,27 +74,27 @@ copyCurrentHeadToWS = findHead `compose` moveR `compose` copyTo (UTM.L, UTM.WS)
 最小の遷移表を使い、選んだ遷移だけを 'MTS' にし、遷移先状態を 'WQ'
 へコピーすることを確認する。
 
->>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, B, SP, I, SP, I, SP, O, TS, PD], I, [])
-D@0#1#1#_#1;C0_Q_S1 --> D*0#1#1#_#1;C0_Q1S1
-                  ^           ^
+>>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, O, O, SP, I, SP, I, O, SP, O, TS, PD], O, [I, B])
+D@0#01#1#00#1;C0_Q_S01_ --> D*0#01#1#00#1;C0_Q1S01
+                    ^              ^
 
 先頭候補が不一致なら 'TS' に戻して次の候補を選ぶ。
 
->>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, B, SP, O, SP, I, SP, O, TS, ST, I, SP, B, SP, I, SP, O, SP, O, TS, PD], I, [])
-D@0#0#1#_#1;@0#1#0#_#1;C0_Q_S1 --> D@0#0#1#_#1;*0#1#0#_#1;C0_Q0S1
-                             ^                      ^
+>>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, I, I, SP, I, SP, I, O, SP, O, TS, ST, O, SP, O, O, SP, I, SP, O, I, SP, I, TS, PD], O, [I, B])
+D@1#10#1#00#0;@0#01#1#11#1;C0_Q_S01_ --> D@1#10#1#00#0;*0#01#1#11#1;C0_Q1S01
+                                 ^                           ^
 
 状態 'q' が不一致の候補も同じように飛ばす。
 
->>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, B, SP, O, SP, I, SP, O, TS, ST, I, SP, B, SP, I, SP, I, SP, I, TS, PD], I, [])
-D@1#1#1#_#1;@0#1#0#_#1;C0_Q_S1 --> D@1#1#1#_#1;*0#1#0#_#1;C0_Q0S1
-                             ^                      ^
+>>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, I, I, SP, I, SP, I, O, SP, O, TS, ST, O, SP, O, O, SP, I, SP, I, O, SP, I, TS, PD], O, [I, B])
+D@1#01#1#00#0;@0#01#1#11#1;C0_Q_S01_ --> D@1#01#1#00#0;*0#01#1#11#1;C0_Q1S01
+                                 ^                           ^
 
 候補がなければ、すべての 'MTS' を戻して正常終了する。
 
->>> test findTransition ([WS, B, WQ, B, O, PC, ST, I, SP, B, SP, I, SP, O, SP, O, TS, PD], I, [])
-D@0#0#1#_#1;C0_Q_S1 --> D@0#0#1#_#1;C0_Q_S__
-                  ^                        ^
+>>> test findTransition ([WS, B, WQ, B, O, PC, ST, O, SP, O, O, SP, I, SP, O, I, SP, O, TS, PD], O, [I, B])
+D@0#10#1#00#0;C0_Q_S01_ --> D@0#10#1#00#0;C0_Q_S___
+                    ^                             ^
 -}
 findTransition :: Compiler
 findTransition = moveTo (UTM.L, UTM.PD)
@@ -117,15 +117,8 @@ findTransition = moveTo (UTM.L, UTM.PD)
 
     matchS :: Compiler
     matchS = moveR
-             `compose` branch (== UTM.O) (matchesWS UTM.O)
-                         (branch (== UTM.I) (matchesWS UTM.I)
-                           (branch (== UTM.B) (matchesWS UTM.B)
-                             (halt UTM.InvalidTransitionTable)))
-
-    matchesWS :: UTM.S -> Compiler
-    matchesWS s = moveTo (UTM.R, UTM.WS)
-                  `compose` moveR
-                  `compose` branch (== s) (moveTo (UTM.L, UTM.MTS)) nextTransition
+             `compose` matchUntil UTM.SP (UTM.R, UTM.WS) UTM.B
+             `compose` branch (== UTM.B) (moveTo (UTM.L, UTM.MTS)) nextTransition
 
     nextTransition :: Compiler
     nextTransition = moveTo (UTM.L, UTM.MTS)
