@@ -3,10 +3,15 @@ module UTMProgram where
 import Compiler
 import UTM
 
+-- | 開始時: 本体の開始位置
+--   終了時: 本体に依存する停止位置
 forever :: Compiler -> Compiler
 forever = while (const True)
 
 {-| UTM の実行器コードを生成する。つまり万能チューリングマシンの delta 関数を生成する。
+
+開始時: 'PD'
+終了時: 選択した遷移の 'TS'、または停止時は 'WS' を消去した直後の 'B'
 >>> import TM1
 >>> import UTMEncoding
 >>> import UTMEval
@@ -43,6 +48,9 @@ utm = forever utmStep
 
 {-| ターゲット TM の1ステップをシミュレートする。
 
+開始時: 'PD'
+終了時: 選択した遷移の 'TS'、または停止時は 'WS' を消去した直後の 'B'
+
 >>> import TM1
 >>> import UTMEncoding
 >>> test utmStep (encode TM1 ([One], One, [Blank, Blank]))
@@ -57,7 +65,10 @@ utmStep = copyCurrentHeadToWS
           `compose` updateCurrentState
           `compose` cleanupStep
 
-{-| VT にいる状態から現在の仮想ヘッドをVTから取得してWorkSにコピーする
+{-| 'VT' から現在の仮想ヘッド記号を取得して 'WS' にコピーする。
+
+開始時: 'VT'
+終了時: コピー元 'HVC' セルの符号列の最上位桁
 >>> test copyCurrentHeadToWS ([B,B,B,WS], VT, [VC,I,O,I,HVC,O,I,I,VC,O,O,I])
 S___T|101/011|001 --> S011T|101/011|001
     ^                           ^
@@ -72,13 +83,20 @@ copyCurrentHeadToWS :: Compiler
 copyCurrentHeadToWS = findHead `compose` moveR `compose` copyTo (UTM.L, UTM.WS)
   where
     findHead :: Compiler
+    -- 開始時: 任意位置
+    -- 終了時: 'HVC'、または停止時は 'B'
     findHead = moveAfter (UTM.R, UTM.VT)
                `compose` while (`notElem` [UTM.HVC, UTM.B]) moveR
                `compose` branch (== UTM.HVC) nop (halt UTM.InvalidVirtualTape)
     nop :: Compiler
+    -- 開始時: 現在セル
+    -- 終了時: 同じセル
     nop env = (env, [])
 
-{-| PD の先頭から状態遷移表を引く。
+{-| 'PD' の先頭から状態遷移表を引く。
+
+開始時: 'PD'
+終了時: 選択済みの 'MTS'、または停止時は 'WS' を消去した直後の 'B'
 
 最小の遷移表を使い、選んだ遷移だけを 'MTS' にし、遷移先状態を 'WQ'
 へコピーすることを確認する。
@@ -116,38 +134,57 @@ findTransition = moveTo (UTM.L, UTM.PD)
 
 
   where
+    -- | 開始時: 候補遷移の 'TS'
+    --   終了時: q の照合結果位置
     tryTransition :: Compiler
     tryTransition = markTransitionStart `compose` matchQ
 
+    -- | 開始時: 'MTS'
+    --   終了時: s フィールドの先頭、または不一致位置
     matchQ :: Compiler
     matchQ = moveAfter (UTM.R, UTM.PC)
              `compose` matchUntil UTM.B (UTM.L, UTM.MTS) UTM.SP
              `compose` branch (== UTM.SP) matchS nextTransition
 
+    -- | 開始時: s フィールドの先頭
+    --   終了時: 'MTS'、または不一致位置
     matchS :: Compiler
     matchS = moveR
              `compose` matchUntil UTM.SP (UTM.R, UTM.WS) UTM.B
              `compose` branch (== UTM.B) (moveTo (UTM.L, UTM.MTS)) nextTransition
 
+    -- | 開始時: 不一致位置
+    --   終了時: 次候補の 'TS'、または遷移表末尾の 'PC'
     nextTransition :: Compiler
     nextTransition = moveTo (UTM.L, UTM.MTS)
                      `compose` unmarkTransitionStart
                      `compose` while (/= UTM.ST) moveR
                      `compose` moveR
 
+    -- | 開始時: 選択済みの 'MTS'
+    --   終了時: 同じ 'MTS'
     transitionMatched :: Compiler
     transitionMatched = moveAfter (UTM.R, UTM.SP)
                         `compose` moveAfter (UTM.R, UTM.SP)
                         `compose` copyQ
 
+    -- | 開始時: q' フィールドの最上位桁
+    --   終了時: q' の終端 'SP'
     copyQ :: Compiler
     copyQ = copyToUntil (UTM.R, UTM.WQ) UTM.SP
 
+    -- | 開始時: 'PC'
+    --   終了時: 'WS' を消去した直後の 'B'（停止）
     targetHalted :: Compiler
     targetHalted = moveAfter (UTM.R, UTM.WS)
                    `compose` eraseR
                    `compose` halt UTM.TargetHalted
 
+{-| 選択済み遷移の b フィールドで、現在の仮想ヘッドセルの符号列を更新する。
+
+開始時: 選択済みの 'MTS'
+終了時: 同じ 'MTS'
+-}
 writeVirtualSymbol :: Compiler
 writeVirtualSymbol = eraseHeadCode
                      `compose` moveTo (UTM.L, UTM.MTS)
@@ -157,6 +194,8 @@ writeVirtualSymbol = eraseHeadCode
                      `compose` copyToUntil (UTM.R, UTM.HVC) UTM.SP
                      `compose` moveTo (UTM.L, UTM.MTS)
   where
+    -- | 開始時: 任意位置
+    --   終了時: 'HVC' の符号列を消去した直後の 'B'
     eraseHeadCode :: Compiler
     eraseHeadCode = moveAfter (UTM.R, UTM.VT)
                     `compose` while (`notElem` [UTM.HVC, UTM.B]) moveR
@@ -164,6 +203,9 @@ writeVirtualSymbol = eraseHeadCode
 
 
 {-| 選択済み遷移の方向ビットに従って仮想ヘッドを動かす。
+
+開始時: 選択済みの 'MTS'
+終了時: 同じ 'MTS'
 
 >>> test moveVirtualHeadByDirection ([], MTS, [O,SP,O,I,SP,I,SP,O,O,SP,O,ST,VT,VC,I,O,HVC,O,I,VC,I,I])
 *0#01#1#00#0;T|10/01|11 --> *0#01#1#00#0;T/10|01|11
@@ -185,17 +227,24 @@ moveVirtualHeadByDirection = moveTo (UTM.L, UTM.MTS)
                                  (halt UTM.InvalidTransitionTable)))
                              `compose` moveTo (UTM.L, UTM.MTS)
   where
+    -- | 開始時: 方向ビット
+    --   終了時: 移動先仮想セルの 'HVC'
     moveLeft :: Compiler
     moveLeft = moveAfter (UTM.R, UTM.VT)
                `compose` while (/= UTM.HVC) moveR
                `compose` moveVirtualHeadL
 
+    -- | 開始時: 方向ビット
+    --   終了時: 移動先仮想セルの 'HVC'
     moveRight :: Compiler
     moveRight = moveAfter (UTM.R, UTM.VT)
                 `compose` while (/= UTM.HVC) moveR
                 `compose` moveVirtualHeadR
 
-{-| WQ の状態列で PC の状態列を置き換える。
+{-| 'WQ' の状態列で 'PC' の状態列を置き換える。
+
+開始時: 選択済みの 'MTS'
+終了時: 同じ 'MTS'
 
 >>> test updateCurrentState ([], MTS, [PC,I,B,B,WQ,I,O,B,WS,B,WB,O,I,B,VT,HVC,I,O])
 *C1__Q10_S_%01_T/10 --> *C10_Q10_S_%01_T/10
@@ -209,6 +258,9 @@ updateCurrentState = moveAfter (UTM.R, UTM.PC)
                      `compose` moveTo (UTM.L, UTM.MTS)
 
 {-| 作業領域を消去し、選択中の遷移印を戻す。
+
+開始時: 選択済みの 'MTS'
+終了時: 同じ遷移開始セルを復元した 'TS'
 
 >>> test cleanupStep ([], MTS, [PC,I,B,WQ,I,B,WS,O,I,B,WB,O,I,B,VT,HVC,O,I])
 *C1_Q1_S01_%01_T/01 --> @C1_Q__S___%01_T/01

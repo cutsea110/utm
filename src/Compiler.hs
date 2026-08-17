@@ -17,7 +17,10 @@ defEnv = Env { state = 0 }
 
 type Compiler = Env -> (Env, UTM.Delta)
 
-{-| 逐次実行: c1の停止状態にc2を続けて実行する
+{-| 逐次実行: c1の停止状態にc2を続けて実行する。
+
+開始時: 'c1' の開始位置
+終了時: 'c2' の終了位置
 >>> test (moveR `compose` write I) ([B, B], B, [B, B])
 _____ --> ___1_
   ^          ^
@@ -31,7 +34,10 @@ compose :: Compiler -> Compiler -> Compiler
     (env1, code1) = c1 env0
     (env2, code2) = c2 env1
 
-{-| 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する
+{-| 条件分岐: ヘッドがcondを満たすときc1を、それ以外のときc2を実行する。
+
+開始時: 分岐判定位置
+終了時: 選択された枝の終了位置
 >>> test (branch (== UTM.I) (write O) (write I)) ([B, B], I, [B, B])
 __1__ --> __0__
   ^         ^
@@ -68,7 +74,11 @@ branch predicate c1 c2 branchInitialEnv =
            , symbol <- allSymbols
            ]
 
-{-| ループ: ヘッドがpredicateを満たすときbodyを実行し、それ以外のとき停止する
+{-| ループ: ヘッドがpredicateを満たすときbodyを実行し、それ以外のとき停止する。
+
+開始時: 判定位置
+終了時: 'predicate' が偽になった判定位置
+したがって 'body' は次の反復で読む位置にヘッドを置いて終了しなければならない。
 >>> test (while (/= UTM.B) moveR) ([I, I], I, [I, I])
 11111 --> 11111_
   ^            ^
@@ -105,6 +115,9 @@ while predicate body whileInitialEnv =
 {-| 指定した理由で UTM を停止させる。
 停止状態には遷移を定義しないため、'UTMEval.run' はその理由を最終状態として返す。
 
+開始時: 現在位置
+終了時: 現在位置（停止）
+
 >>> run (S 0, snd (halt UTM.VirtualTapeLeftBoundaryExceeded defEnv)) ([], UTM.B, [])
 Failed VirtualTapeLeftBoundaryExceeded ([],B,[])
 -}
@@ -118,6 +131,9 @@ halt reason env0 = (next env0, code)
 {-| 遷移探索中のカーソルとして、現在位置の 'TS' を 'MTS' に置換する。
 通常の 'write' では読み取り専用の 'TS' / 'MTS' を変更できない。
 
+開始時: 置換対象のセル
+終了時: 同じセル
+
 >>> test markTransitionStart ([B], TS, [B])
 _@_ --> _*_
  ^       ^
@@ -127,6 +143,9 @@ markTransitionStart = rewriteTransitionStart UTM.TS UTM.MTS
 
 {-| 'MTS' を通常の 'TS' へ復元する。
 
+開始時: 置換対象のセル
+終了時: 同じセル
+
 >>> test unmarkTransitionStart ([B], MTS, [B])
 _*_ --> _@_
  ^       ^
@@ -134,22 +153,32 @@ _*_ --> _@_
 unmarkTransitionStart :: Compiler
 unmarkTransitionStart = rewriteTransitionStart UTM.MTS UTM.TS
 
+-- | 開始時: 'from' のセル
+--   終了時: 同じセル（'to' に置換済み）
 rewriteTransitionStart :: UTM.S -> UTM.S -> Compiler
 rewriteTransitionStart from to env0 = (next env0, [((get env0, from), (get env1, UTM.Write to))])
   where
     env1 = next env0
 
+-- | 開始時: 空白セル 'B'
+--   終了時: 同じセル（'HVC' に置換済み）
 createVirtualHead :: Compiler
 createVirtualHead env0 = (env1, [((get env0, UTM.B), (get env1, UTM.Write UTM.HVC))])
   where
     env1 = next env0
 
+-- | 開始時: 'VC' のセル
+--   終了時: 同じセル（'HVC' に置換済み）
 markVirtualHead :: Compiler
 markVirtualHead = rewriteVirtualHead UTM.VC UTM.HVC
 
+-- | 開始時: 'HVC' のセル
+--   終了時: 同じセル（'VC' に置換済み）
 unmarkVirtualHead :: Compiler
 unmarkVirtualHead = rewriteVirtualHead UTM.HVC UTM.VC
 
+-- | 開始時: 'from' のセル
+--   終了時: 同じセル（'to' に置換済み）
 rewriteVirtualHead :: UTM.S -> UTM.S -> Compiler
 rewriteVirtualHead from to env0 = (env1, [((get env0, from), (get env1, UTM.Write to))])
   where
@@ -157,6 +186,9 @@ rewriteVirtualHead from to env0 = (env1, [((get env0, from), (get env1, UTM.Writ
 
 {-| 仮想ヘッドを左へ1セル移動する。
 'UTM.VT' に到達した場合や仮想テープ内に不正な記号があった場合は、既存の仮想ヘッドを保ったまま停止する。
+
+開始時: 移動前セルの 'HVC'
+終了時: 移動先セルの 'HVC'
 
 >>> test moveVirtualHeadL ([O,I,VC,VT,B,I,O,WB], HVC, [I,O,VC,I,I])
 %01_T|10/10|11 --> %01_T/10|10|11
@@ -183,6 +215,9 @@ moveVirtualHeadL = moveL
 {-| 仮想ヘッドを右へ1セル移動する。
 次セルが 'VC' ならそれを 'HVC' に置換する。右端の 'B' なら、'WB' の
 blank code を使って新しいヘッド付きセルを追加する。
+
+開始時: 移動前セルの 'HVC'
+終了時: 移動先セルの 'HVC'
 
 >>> test moveVirtualHeadR ([O,I,VC,VT,B,I,O,WB], HVC, [I,O,VC,I,I])
 %01_T|10/10|11 --> %01_T|10|10/11
@@ -215,7 +250,10 @@ moveVirtualHeadR = moveR
                         )
                         (halt UTM.InvalidVirtualTape))
 
-{-| write: primitives
+{-| 現在セルを指定記号で書き換えるプリミティブ。
+
+開始時: 書換え対象のセル
+終了時: 同じセル
 >>> test (write I) ([B, B], B, [B, B])
 _____ --> __1__
   ^         ^
@@ -240,7 +278,8 @@ write s env0
         -- テープの delta を除く範囲のみ書き換え可能。従って s には以下のいずれかのみ受け入れる
         candidates = writableSymbols ++ restrictedSymbols
 
--- | erase: primitive
+-- | 開始時: 消去列の端
+--   終了時: 最初に見つかった 'B' のセル
 erase :: UTM.D -> Compiler
 erase d = while p (write UTM.B `compose` move d)
   where
@@ -249,7 +288,10 @@ erase d = while p (write UTM.B `compose` move d)
         | c `elem` writableSymbols   = True
         | otherwise                  = False
 
-{-| eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止
+{-| eraseR: 右へ1,0を空白に置き換えながら移動し、空白で停止する。
+
+開始時: 消去列の左端
+終了時: 右の最初の 'B'
 >>> test eraseR ([I, I], I, [I, I])
 11111 --> 11____
   ^            ^
@@ -263,7 +305,10 @@ _____ --> _____
 eraseR :: Compiler
 eraseR = erase UTM.R
 
-{-| eraseL: 左へ1,0を空白に置き換えながら移動し、空白で停止
+{-| eraseL: 左へ1,0を空白に置き換えながら移動し、空白で停止する。
+
+開始時: 消去列の右端
+終了時: 左の最初の 'B'
 >>> test eraseL ([I, I], I, [I, I])
 11111 --> ____11
   ^       ^
@@ -277,7 +322,8 @@ _____ --> _____
 eraseL :: Compiler
 eraseL = erase UTM.L
 
--- | move: primitives
+-- | 開始時: 現在セル
+--   終了時: 指定方向に1セル隣
 move :: UTM.D -> Compiler
 move d env0 = (env1, code)
   where code = [ ((get env0, symbol), (get env1, UTM.Move d))
@@ -285,7 +331,10 @@ move d env0 = (env1, code)
                ]
         env1 = next env0
 
-{-| moveR: 右へ1つ移動
+{-| moveR: 右へ1つ移動する。
+
+開始時: 現在セル
+終了時: 右隣セル
 >>> test moveR ([I, I], I, [I, I])
 11111 --> 11111
   ^          ^
@@ -299,7 +348,10 @@ _____ --> _____
 moveR :: Compiler
 moveR = move UTM.R
 
-{-| moveL: 左へ1つ移動
+{-| moveL: 左へ1つ移動する。
+
+開始時: 現在セル
+終了時: 左隣セル
 >>> test moveL ([I, I], I, [I, I])
 11111 --> 11111
   ^        ^
@@ -313,7 +365,10 @@ _____ --> _____
 moveL :: Compiler
 moveL = move UTM.L
 
-{-| moveTo: 指定方向で最初に見つかるシンボルまで移動する
+{-| moveTo: 指定方向で最初に見つかるシンボルまで移動する。
+
+開始時: 任意の探索開始位置
+終了時: 見つけた 'symbol' のセル
 >>> test (moveTo (R, SP)) ([I, I], I, [B, B, SP, I])
 111__#1 --> 111__#1
   ^              ^
@@ -324,7 +379,11 @@ moveL = move UTM.L
 moveTo :: (UTM.D, UTM.S) -> Compiler
 moveTo (direction, symbol) = while (/= symbol) (move direction)
 
-{-| moveAfter: 指定方向で最初に見つかるシンボルの右隣へ移動する
+{-| moveAfter: 指定方向で最初に見つかるシンボルの右隣へ移動する。
+
+開始時: 任意の探索開始位置
+終了時: 見つけた 'symbol' の物理的な右隣
+注記: 探索方向が左の場合も終了位置は右隣。
 >>> test (moveAfter (R, SP)) ([I, I], I, [B, B, SP, I])
 111__#1 --> 111__#1
   ^               ^
@@ -340,10 +399,15 @@ isPlainBit UTM.I = True
 isPlainBit UTM.O = True
 isPlainBit _     = False
 
+-- | 開始時: ビット列の端または非ビット
+--   終了時: 指定方向で最初の非ビット
 skipSeq :: UTM.D -> Compiler
 skipSeq direction = while isPlainBit (move direction)
 
-{-| 右へ1,0の列をスキップして空白で停止
+{-| 右へ1,0の列をスキップして空白で停止する。
+
+開始時: 列の左端
+終了時: 列の右隣の非ビット
 >>> test skipSeqR ([I, I], I, [I, I])
 11111 --> 11111_
   ^            ^
@@ -366,7 +430,10 @@ skipSeq direction = while isPlainBit (move direction)
 skipSeqR :: Compiler
 skipSeqR = skipSeq UTM.R
 
-{-| 左へ1,0の列をスキップして空白で停止
+{-| 左へ1,0の列をスキップして空白で停止する。
+
+開始時: 列の右端
+終了時: 列の左隣の非ビット
 >>> test skipSeqL ([I, I], I, [I, I])
 11111 --> _11111
   ^       ^
@@ -389,7 +456,10 @@ skipSeqR = skipSeq UTM.R
 skipSeqL :: Compiler
 skipSeqL = skipSeq UTM.L
 
-{-| copyTo: 非破壊的コピー
+{-| copyTo: 非破壊的コピー。
+
+開始時: コピー元ビット列の最上位桁
+終了時: コピー元ビット列の最上位桁
 >>> test (copyTo (R, SP)) ([], I, [I, I, B, B, SP])
 111__# --> 111__#111
 ^          ^
@@ -407,6 +477,9 @@ copyTo target = copyToUntil target UTM.B
 コピー元は現在位置を最上位桁とするビット列で、'sourceEnd' の直前までを
 コピーする。
 
+開始時: コピー元ビット列の最上位桁
+終了時: コピー元ビット列の最上位桁
+
 >>> test (copyToUntil (R, WQ) SP) ([], I, [O, SP, WQ])
 10#Q --> 10#Q10
 ^        ^
@@ -415,33 +488,51 @@ copyToUntil :: (UTM.D, UTM.S) -> UTM.S -> Compiler
 copyToUntil (markerDirection, marker) sourceEnd = copyBits `compose` restoreSource
   where
     copyBits :: Compiler
+    -- 開始時: 未コピー部分の先頭
+    -- 終了時: コピー元の終端
     copyBits = while isSourceBit copyBit
 
     copyBit :: Compiler
+    -- 開始時: コピー元の1ビット
+    -- 終了時: 次の未コピー元ビット
     copyBit = branch (== UTM.I) copyI copyO
 
     copyI :: Compiler
+    -- 開始時: 'I'
+    -- 終了時: 次の未コピー元ビット
     copyI = copyMarked UTM.MI UTM.I
 
     copyO :: Compiler
+    -- 開始時: 'O'
+    -- 終了時: 次の未コピー元ビット
     copyO = copyMarked UTM.MO UTM.O
 
     copyMarked :: UTM.S -> UTM.S -> Compiler
+    -- 開始時: コピー元の1ビット
+    -- 終了時: 次の未コピー元ビット
     copyMarked sourceMark bit
       = foldl1 compose [write sourceMark, moveAfter (markerDirection, marker), skipSeqR, write bit, nextSource]
 
     seekMarkedSource :: Compiler
+    -- 開始時: コピー先側
+    -- 終了時: 直近のコピー元マーク
     seekMarkedSource = while (not . isMark) (move (opposite markerDirection))
 
     nextSource :: Compiler
+    -- 開始時: コピー元マーク
+    -- 終了時: 次の未コピー元ビットまたは終端
     nextSource = case markerDirection of
       UTM.R -> seekMarkedSource `compose` moveR
       UTM.L -> seekMarkedSource `compose` while isMark moveR
 
     restoreSource :: Compiler
+    -- 開始時: コピー元終端の直後
+    -- 終了時: コピー元ビット列の最上位桁
     restoreSource = moveL `compose` while isMark restoreBit `compose` moveR
 
     restoreBit :: Compiler
+    -- 開始時: コピー元マーク
+    -- 終了時: その左隣
     restoreBit = branch (== UTM.MI) (write UTM.I) (write UTM.O) `compose` moveL
 
     isMark :: UTM.S -> Bool
@@ -461,6 +552,9 @@ copyToUntil (markerDirection, marker) sourceEnd = copyBits `compose` restoreSour
 {-| ビット列どうしの終端記号をそれぞれ指定して照合する版。
 現在位置から 'sourceEnd' の直前までと、指定マーカーの右側から
 'targetEnd' の直前までを比較する。
+
+開始時: 比較元ビット列の最上位桁
+終了時: 比較先の終端、または不一致を表す位置
 
 >>> test (matchUntil B (R, SP) B) ([], I, [O, I, B, B, SP, I, O, I])
 101__#101 --> 101__#101_
@@ -494,18 +588,28 @@ matchUntil :: UTM.S -> (UTM.D, UTM.S) -> UTM.S -> Compiler
 matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose` finish
   where
     compareBits :: Compiler
+    -- 開始時: 比較元の先頭
+    -- 終了時: 比較元の終端または不一致位置
     compareBits = while continueSource compareBit
 
     compareBit :: Compiler
+    -- 開始時: 比較元の1ビット
+    -- 終了時: 次の比較元ビットまたは不一致位置
     compareBit = branch (== UTM.I) compareI compareO
 
     compareI :: Compiler
+    -- 開始時: 比較元の 'I'
+    -- 終了時: 次の比較元ビットまたは不一致位置
     compareI = compareMarked UTM.MI UTM.HI UTM.I
 
     compareO :: Compiler
+    -- 開始時: 比較元の 'O'
+    -- 終了時: 次の比較元ビットまたは不一致位置
     compareO = compareMarked UTM.MO UTM.HO UTM.O
 
     compareMarked :: UTM.S -> UTM.S -> UTM.S -> Compiler
+    -- 開始時: 比較元の1ビット
+    -- 終了時: 次の比較元ビットまたは比較先の不一致位置
     compareMarked sourceMark targetMark bit = foldl1 compose
       [ write sourceMark
       , moveAfter (markerDirection, marker)
@@ -516,10 +620,14 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
       ]
 
     finish :: Compiler
+    -- 開始時: 比較元終端またはマーク
+    -- 終了時: 比較先の判定位置
     finish = branch isSourceMark sourceLonger
            $ branch isTargetMark targetMismatch finishAfterSource
 
     sourceLonger :: Compiler
+    -- 開始時: 比較元マーク
+    -- 終了時: 比較元終端の直後
     sourceLonger = foldl1 compose
       [ moveAfter (markerDirection, marker)
       , restoreTarget
@@ -528,6 +636,8 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
       ]
 
     targetMismatch :: Compiler
+    -- 開始時: 比較先マーク
+    -- 終了時: 比較先の不一致位置の左隣
     targetMismatch = foldl1 compose
       [ seekSourceMark
       , restoreSourceMark
@@ -537,6 +647,8 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
       ]
 
     finishAfterSource :: Compiler
+    -- 開始時: 比較元終端
+    -- 終了時: 比較先終端または余りの先頭
     finishAfterSource = foldl1 compose
       [ moveAfter (markerDirection, marker)
       , skipTargetMarks
@@ -544,29 +656,43 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
       ]
 
     targetLonger :: Compiler
+    -- 開始時: 比較先に余った最初のビット
+    -- 終了時: その左隣
     targetLonger = branch (== UTM.I) (write UTM.HI) (write UTM.HO)
                  `compose` cleanupFromTarget
                  `compose` moveL
 
     seekSourceMark :: Compiler
+    -- 開始時: 比較先側
+    -- 終了時: 直近の比較元マーク
     seekSourceMark = while (not . isSourceMark) (move (opposite markerDirection))
 
     restoreSource :: UTM.S -> Compiler
     restoreSource bit = seekSourceMark `compose` write bit
 
     restoreSourceMark :: Compiler
+    -- 開始時: 比較元マーク
+    -- 終了時: 同じセル
     restoreSourceMark = branch (== UTM.MI) (write UTM.I) (write UTM.O)
 
     skipTargetMarks :: Compiler
+    -- 開始時: 比較先の先頭
+    -- 終了時: 最初の非比較先マーク
     skipTargetMarks = while isTargetMark moveR
 
     restoreTarget :: Compiler
+    -- 開始時: 比較先マーク列の先頭
+    -- 終了時: 列直後の非マーク
     restoreTarget = while isTargetMark restoreBit
 
     restoreBit :: Compiler
+    -- 開始時: 比較先マーク
+    -- 終了時: その右隣
     restoreBit = branch (== UTM.HI) (write UTM.I) (write UTM.O) `compose` moveR
 
     cleanupFromTarget :: Compiler
+    -- 開始時: 比較先側
+    -- 終了時: 復元済み比較先列の直後
     cleanupFromTarget = moveAfter (UTM.L, marker) `compose` restoreTarget
 
     continueSource :: UTM.S -> Bool
