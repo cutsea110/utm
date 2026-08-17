@@ -17,8 +17,8 @@ TM1 は 1 インクリメントするチューリングマシンで、11を与�
 これをエンコードして UTM のテープに変換し、UTM の delta 関数を使ってシミュレーションする。
 
 >>> test utm tape1
-D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C0_Q__S__T____1i__ --> D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C1_Q__S__T___1o0__
-^                                                                                                  ^
+D@0#00#1#01#1;@0#01#0#00#0;@0#10#1#01#1;C0_Q__S___%10_T|10|10|10|10|01/01|10|10 --> D@0#00#1#01#1;@0#01#0#00#0;@0#10#1#01#1;C1_Q__S___%10_T|10|10|10|01/00|00|10|10
+^                                                                                                                                    ^
 
 TM2 はハシゴを登るチューリングマシンで、空の足場にマークをつけて上へ登り、マークのついた足場に対して上へ移動し、終わりのついた足場に対して下へ移動して停止する。
 これをエンコードして UTM のテープに変換し、UTM の delta 関数を使ってシミュレーションする。
@@ -26,8 +26,8 @@ TM2 はハシゴを登るチューリングマシンで、空の足場にマー�
 >>> import TM2
 >>> let tape2 = encode TM2 ([Empty],Empty,[Mark,Empty,Done])
 >>> test utm tape2
-D@0#_#1#0#1;@1#_#1#0#1;@1#0#1#0#1;@1#1#10#1#0;C0__Q___S__T______^0_1 --> D@0#_#1#0#1;@1#_#1#0#1;@1#0#1#0#1;@1#1#10#1#0;C10_Q___S__T______00o1
-^                                                                                                                                ^
+D@0#00#1#01#1;@1#00#1#01#1;@1#01#1#01#1;@1#10#10#10#0;C0__Q___S___%00_T|00|00|00|00|00|00/00|01|00|10 --> D@0#00#1#01#1;@1#00#1#01#1;@1#01#1#01#1;@1#10#10#10#0;C10_Q___S___%00_T|00|00|00|00|00|00|01|01/01|10
+^                                                                                                                                                                          ^
 -}
 utm :: Compiler
 utm = forever utmStep
@@ -37,8 +37,8 @@ utm = forever utmStep
 >>> import TM1
 >>> import UTMEncoding
 >>> test utmStep (encode TM1 ([One], One, [Blank, Blank]))
-D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C0_Q__S__T____1i__ --> D@0#0#1#1#1;@0#1#0#0#0;@0#_#1#1#1;C0_Q__S__T____i0__
-^                                                                    ^
+D@0#00#1#01#1;@0#01#0#00#0;@0#10#1#01#1;C0_Q__S___%10_T|10|10|10|10|01/01|10|10 --> D@0#00#1#01#1;@0#01#0#00#0;@0#10#1#01#1;C0_Q__S___%10_T|10|10|10|10/01|00|10|10
+^                                                                                                 ^
 -}
 utmStep :: Compiler
 utmStep = copyCurrentHeadToWS
@@ -188,9 +188,9 @@ moveVirtualHeadByDirection = moveTo (UTM.L, UTM.MTS)
 
 {-| WQ の状態列で PC の状態列を置き換える。
 
->>> test updateCurrentState ([], MTS, [O, SP, I, SP, I, SP, B, SP, O, ST, PC, O, B, B, WQ, I, O, B, WS, B])
-*0#1#1#_#0;C0__Q10_S_ --> *0#1#1#_#0;C10_Q10_S_
-^                         ^
+>>> test updateCurrentState ([], MTS, [PC,I,B,B,WQ,I,O,B,WS,B,WB,O,I,B,VT,HVC,I,O])
+*C1__Q10_S_%01_T/10 --> *C10_Q10_S_%01_T/10
+^                       ^
 -}
 updateCurrentState :: Compiler
 updateCurrentState = moveAfter (UTM.R, UTM.PC)
@@ -201,9 +201,9 @@ updateCurrentState = moveAfter (UTM.R, UTM.PC)
 
 {-| 作業領域を消去し、選択中の遷移印を戻す。
 
->>> test cleanupStep ([], MTS, [O, SP, I, SP, I, SP, B, SP, O, ST, PC, I, O, B, WQ, I, O, B, WS, I, B, VT, HO])
-*0#1#1#_#0;C10_Q10_S1_To --> @0#1#1#_#0;C10_Q___S__To
-^                            ^
+>>> test cleanupStep ([], MTS, [PC,I,B,WQ,I,B,WS,O,I,B,WB,O,I,B,VT,HVC,O,I])
+*C1_Q1_S01_%01_T/01 --> @C1_Q__S___%01_T/01
+^                       ^
 -}
 cleanupStep :: Compiler
 cleanupStep = moveAfter (UTM.R, UTM.WQ)

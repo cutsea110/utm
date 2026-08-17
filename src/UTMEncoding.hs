@@ -55,9 +55,9 @@ encodeProgramWith tm codebook = concatMap (encodeTransitionWith codebook) transi
 {-| 状態 q, シンボル s に対する遷移 (q', s', d) を UTM のプログラムとしてエンコードする。
 >>> import TM1
 >>> encodeTransition TM1 (TM1.Carry, TM1.One, TM1.Halt, TM1.Zero, UTM.L)
-[TS,O,SP,I,SP,I,SP,O,SP,O,ST]
+[TS,O,SP,O,I,SP,I,SP,O,O,SP,O,ST]
 >>>encodeTransition TM1 (TM1.Carry, TM1.Zero, TM1.Carry, TM1.One, UTM.R)
-[TS,O,SP,O,SP,O,SP,I,SP,I,ST]
+[TS,O,SP,O,O,SP,O,SP,O,I,SP,I,ST]
 -}
 encodeTransition :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
                  => tm -> (TM.State tm, TM.Symbol tm, TM.State tm, TM.Symbol tm, UTM.D) -> [UTM.S]
