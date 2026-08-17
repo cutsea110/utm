@@ -139,51 +139,81 @@ rewriteTransitionStart from to env0 = (next env0, [((get env0, from), (get env1,
   where
     env1 = next env0
 
+createVirtualHead :: Compiler
+createVirtualHead env0 = (env1, [((get env0, UTM.B), (get env1, UTM.Write UTM.HVC))])
+  where
+    env1 = next env0
+
+markVirtualHead :: Compiler
+markVirtualHead = rewriteVirtualHead UTM.VC UTM.HVC
+
+unmarkVirtualHead :: Compiler
+unmarkVirtualHead = rewriteVirtualHead UTM.HVC UTM.VC
+
+rewriteVirtualHead :: UTM.S -> UTM.S -> Compiler
+rewriteVirtualHead from to env0 = (env1, [((get env0, from), (get env1, UTM.Write to))])
+  where
+    env1 = next env0
+
 {-| 仮想ヘッドを左へ1セル移動する。
 'UTM.VT' に到達した場合や仮想テープ内に不正な記号があった場合は、既存の仮想ヘッドを保ったまま停止する。
 
->>> eval (S 0, snd (moveVirtualHeadL defEnv)) ([UTM.O, UTM.VT], UTM.HI, [UTM.B])
-([VT],HO,[I,B])
->>> run (S 0, snd (moveVirtualHeadL defEnv)) ([UTM.VT], UTM.HI, [UTM.O])
-Failed VirtualTapeLeftBoundaryExceeded ([VT],HI,[O])
+>>> test moveVirtualHeadL ([O,I,VC,VT,B,I,O,WB], HVC, [I,O,VC,I,I])
+%01_T|10/10|11 --> %01_T/10|10|11
+        ^               ^
+
+>>> run (S 0, snd (moveVirtualHeadL defEnv)) ([VT,B,I,O,WB], HVC, [I,O,VC,I,I])
+Failed VirtualTapeLeftBoundaryExceeded ([B,I,O,WB],VT,[HVC,I,O,VC,I,I])
 -}
 moveVirtualHeadL :: Compiler
-moveVirtualHeadL =
-  branch (== UTM.HB) (moveHeadLeft UTM.B)
-    (branch (== UTM.HI) (moveHeadLeft UTM.I)
-      (branch (== UTM.HO) (moveHeadLeft UTM.O)
-        (halt UTM.InvalidVirtualTape)))
-  where
-    moveHeadLeft oldSymbol = moveL `compose`
-      branch (== UTM.VT)
-        (moveR `compose` halt UTM.VirtualTapeLeftBoundaryExceeded)
-        (branch (== UTM.B) (finish UTM.HB)
-          (branch (== UTM.I) (finish UTM.HI)
-            (branch (== UTM.O) (finish UTM.HO)
-              (halt UTM.InvalidVirtualTape))))
-      where
-        finish newHead = write newHead `compose` moveR `compose` write oldSymbol `compose` moveL
+moveVirtualHeadL = moveL
+                   `compose` while isPlainBit moveL
+                   `compose` branch (== UTM.VC)
+                      ( markVirtualHead
+                        `compose` moveR
+                        `compose` skipSeqR
+                        `compose` branch (== UTM.HVC)
+                           (unmarkVirtualHead `compose` moveL `compose` skipSeqL)
+                           (halt UTM.InvalidVirtualTape)
+                      )
+                      (branch (== UTM.VT)
+                        (halt UTM.VirtualTapeLeftBoundaryExceeded)
+                        (halt UTM.InvalidVirtualTape))
 
 {-| 仮想ヘッドを右へ1セル移動する。
-右側の物理テープは空白で無限に拡張されるため境界検査は不要だが、仮想テープ内の記号は検査する。
+次セルが 'VC' ならそれを 'HVC' に置換する。右端の 'B' なら、'WB' の
+blank code を使って新しいヘッド付きセルを追加する。
 
->>> eval (S 0, snd (moveVirtualHeadR defEnv)) ([UTM.VT], UTM.HI, [UTM.O])
-([I,VT],HO,[])
+>>> test moveVirtualHeadR ([O,I,VC,VT,B,I,O,WB], HVC, [I,O,VC,I,I])
+%01_T|10/10|11 --> %01_T|10|10/11
+        ^                     ^
+
+>>> test moveVirtualHeadR ([O,I,VC,VT,B,I,O,WB], HVC, [I,O])
+%01_T|10/10 --> %01_T|10|10/01
+        ^                  ^
 -}
 moveVirtualHeadR :: Compiler
-moveVirtualHeadR =
-  branch (== UTM.HB) (moveHeadRight UTM.B)
-    (branch (== UTM.HI) (moveHeadRight UTM.I)
-      (branch (== UTM.HO) (moveHeadRight UTM.O)
-        (halt UTM.InvalidVirtualTape)))
-  where
-    moveHeadRight oldSymbol = moveR `compose`
-      branch (== UTM.B) (finish UTM.HB)
-        (branch (== UTM.I) (finish UTM.HI)
-          (branch (== UTM.O) (finish UTM.HO)
-            (halt UTM.InvalidVirtualTape)))
-      where
-        finish newHead = write newHead `compose` moveL `compose` write oldSymbol `compose` moveR
+moveVirtualHeadR = moveR
+                   `compose` while isPlainBit moveR
+                   `compose` branch (== UTM.VC)
+                      ( markVirtualHead
+                        `compose` moveL
+                        `compose` skipSeqL
+                        `compose` branch (== UTM.HVC)
+                           (unmarkVirtualHead `compose` moveR `compose` skipSeqR)
+                           (halt UTM.InvalidVirtualTape)
+                      )
+                      (branch (== UTM.B)
+                        ( createVirtualHead
+                           `compose` moveL
+                           `compose` skipSeqL
+                           `compose` branch (== UTM.HVC) unmarkVirtualHead (halt UTM.InvalidVirtualTape)
+                           `compose` moveTo (UTM.L, UTM.WB)
+                           `compose` moveR
+                           `compose` copyTo (UTM.R, UTM.HVC)
+                           `compose` moveTo (UTM.R, UTM.HVC)
+                        )
+                        (halt UTM.InvalidVirtualTape))
 
 {-| write: primitives
 >>> test (write I) ([B, B], B, [B, B])
