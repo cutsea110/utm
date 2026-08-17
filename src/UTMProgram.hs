@@ -140,21 +140,19 @@ findTransition = moveTo (UTM.L, UTM.PD)
                    `compose` halt UTM.TargetHalted
 
 writeVirtualSymbol :: Compiler
-writeVirtualSymbol = moveTo (UTM.L, UTM.MTS)
+writeVirtualSymbol = eraseHeadCode
+                     `compose` moveTo (UTM.L, UTM.MTS)
                      `compose` moveAfter (UTM.R, UTM.SP)
                      `compose` moveAfter (UTM.R, UTM.SP)
                      `compose` moveAfter (UTM.R, UTM.SP)
-                     `compose`
-                     branch (== UTM.B) (updateHead UTM.HB)
-                       (branch (== UTM.I) (updateHead UTM.HI)
-                         (branch (== UTM.O) (updateHead UTM.HO)
-                           (halt UTM.InvalidTransitionTable)))
+                     `compose` copyToUntil (UTM.R, UTM.HVC) UTM.SP
                      `compose` moveTo (UTM.L, UTM.MTS)
   where
-    updateHead :: UTM.S -> Compiler
-    updateHead s = moveAfter (UTM.R, UTM.VT)
-                   `compose` while (`notElem` [UTM.HB, UTM.HI, UTM.HO]) moveR
-                   `compose` write s
+    eraseHeadCode :: Compiler
+    eraseHeadCode = moveAfter (UTM.R, UTM.VT)
+                    `compose` while (`notElem` [UTM.HVC, UTM.B]) moveR
+                    `compose` branch (== UTM.HVC) (moveR `compose` eraseR) (halt UTM.InvalidVirtualTape)
+
 
 {-| 選択済み遷移の方向ビットに従って仮想ヘッドを動かす。
 
