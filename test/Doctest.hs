@@ -13,4 +13,5 @@ main = doctest
   , "src/TuringMachine.hs"
   , "src/TM1.hs"
   , "src/TM2.hs"
+  , "src/TM3.hs"
   ]
