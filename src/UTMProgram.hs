@@ -156,13 +156,13 @@ writeVirtualSymbol = eraseHeadCode
 
 {-| 選択済み遷移の方向ビットに従って仮想ヘッドを動かす。
 
->>> test moveVirtualHeadByDirection ([], MTS, [O, SP, I, SP, I, SP, B, SP, O, ST, VT, B, HO, I])
-*0#1#1#_#0;T_o1 --> *0#1#1#_#0;T^01
-^                   ^
+>>> test moveVirtualHeadByDirection ([], MTS, [O,SP,O,I,SP,I,SP,O,O,SP,O,ST,VT,VC,I,O,HVC,O,I,VC,I,I])
+*0#01#1#00#0;T|10/01|11 --> *0#01#1#00#0;T/10|01|11
+^                           ^
 
->>> test moveVirtualHeadByDirection ([], MTS, [O, SP, I, SP, I, SP, B, SP, I, ST, VT, I, HI, B])
-*0#1#1#_#1;T1i_ --> *0#1#1#_#1;T11^
-^                   ^
+>>> test moveVirtualHeadByDirection ([], MTS, [O,SP,O,I,SP,I,SP,O,O,SP,I,ST,VT,VC,I,O,HVC,O,I,VC,I,I])
+*0#01#1#00#1;T|10/01|11 --> *0#01#1#00#1;T|10|01/11
+^                           ^
 -}
 moveVirtualHeadByDirection :: Compiler
 moveVirtualHeadByDirection = moveTo (UTM.L, UTM.MTS)
