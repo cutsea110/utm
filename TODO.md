@@ -12,10 +12,10 @@
 - [x] `WS` を固定幅ビット列 + 終端 `B` の作業領域へ変更する
 - [x] `encodeVirtualTape` を `VC` / `HVC` + 固定幅ビット列のセル列へ変更する
 - [x] 仮想テープの左右に空白セルのバッファを確保する
-- [ ] `copyCurrentHeadToWS` を、`HVC` セルのビット列を `WS` へコピーする実装へ変更する
-- [ ] `findTransition` の `a` と `WS` の照合を `matchUntil` によるビット列照合へ変更する
-- [ ] `writeVirtualSymbol` を、D の `b` ビット列で `HVC` セル本体を上書きする実装へ変更する
-- [ ] 仮想ヘッド移動を `HVC -> VC` / `VC -> HVC` のセル開始記号の置換として実装する
+- [x] `copyCurrentHeadToWS` を、`HVC` セルのビット列を `WS` へコピーする実装へ変更する
+- [x] `findTransition` の `a` と `WS` の照合を `matchUntil` によるビット列照合へ変更する
+- [x] `writeVirtualSymbol` を、D の `b` ビット列で `HVC` セル本体を上書きする実装へ変更する
+- [x] 仮想ヘッド移動を `HVC -> VC` / `VC -> HVC` のセル開始記号の置換として実装する
 - [x] `decodeConfiguration` を v1 の仮想テープセル形式へ対応させる
 - [ ] 4記号以上を持つターゲット TM を追加し、`encode -> utm -> decodeConfiguration` の統合テストを書く
 - [ ] 既存の TM1 と doctest が v1 形式で通ることを確認する
