@@ -194,8 +194,9 @@ rewriteVirtualHead from to env0 = (env1, [((get env0, from), (get env1, UTM.Writ
 %01_T|10/10|11 --> %01_T/10|10|11
         ^               ^
 
->>> run (S 0, snd (moveVirtualHeadL defEnv)) ([VT,B,I,O,WB], HVC, [I,O,VC,I,I])
-Failed VirtualTapeLeftBoundaryExceeded ([B,I,O,WB],VT,[HVC,I,O,VC,I,I])
+>>> test moveVirtualHeadL ([VT,B,I,O,WB], HVC, [I,O,VC,I,I])
+%01_T/10|11 --> %01_T______/01|10|11
+     ^                     ^
 -}
 moveVirtualHeadL :: Compiler
 moveVirtualHeadL = moveL
