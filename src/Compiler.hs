@@ -205,69 +205,118 @@ moveVirtualHeadL = moveL
                        (branch (== UTM.VT) expandLeftBuffer
                          (halt UTM.InvalidVirtualTape)))
   where moveToExistingCell :: Compiler
+        -- 開始時: 左隣仮想テープブロックの 'VC'
+        -- 終了時: そのブロックの 'HVC'
         moveToExistingCell = markVirtualHead
                              `compose` moveR
                              `compose` skipSeqR
-                             `compose` branch (== UTM.HVC)
-                                (unmarkVirtualHead `compose` moveL `compose` skipSeqL)
-                                (halt UTM.InvalidVirtualTape)
+                             `compose`
+                               branch (== UTM.HVC) (unmarkVirtualHead `compose` moveL `compose` skipSeqL)
+                                 (halt UTM.InvalidVirtualTape)
 
-        consumeLeftBuffer:: Compiler
-        consumeLeftBuffer = moveAfter (UTM.L, UTM.WB)
-                            `compose` skipSeqR
-                            `compose` moveL
+        consumeLeftBuffer :: Compiler
+        -- 開始時: 未使用ブロック右端の 'B'
+        -- 終了時: 新しく実体化したブロックの 'HVC'
+        consumeLeftBuffer = seekBlankCodeEnd
                             `compose` copyBlankCode
+                            `compose` createNewVirtualHead
+                            `compose` restoreNewBlankCode
+                            `compose` demoteOldVirtualHead
+                            `compose` restoreBlankTemplate
+                            `compose` seekNewVirtualHead
+
+        seekBlankCodeEnd :: Compiler
+        -- 開始時: 未使用ブロック右端の 'B'
+        -- 終了時: 'WB' の blank code の最下位桁
+        seekBlankCodeEnd = moveAfter (UTM.L, UTM.WB)
+                           `compose` skipSeqR
+                           `compose` moveL
+
+        createNewVirtualHead :: Compiler
+        -- 開始時: 'WB'
+        -- 終了時: 新しく実体化したブロックの 'HVC'
+        createNewVirtualHead = moveTo (UTM.R, UTM.HVC)
+                               `compose` moveL
+                               `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
+                               `compose`
+                                 branch (== UTM.B) createVirtualHead
+                                   (halt UTM.InvalidVirtualTape)
+
+        restoreNewBlankCode :: Compiler
+        -- 開始時: 新しく実体化したブロックの 'HVC'
+        -- 終了時: 旧仮想ヘッドの 'HVC'
+        restoreNewBlankCode = moveR
+                              `compose` unmarkBits
+                              `compose` moveTo (UTM.R, UTM.HVC)
+
+        demoteOldVirtualHead :: Compiler
+        -- 開始時: 旧仮想ヘッドの 'HVC'
+        -- 終了時: 同じ位置の 'VC'
+        demoteOldVirtualHead = unmarkVirtualHead
+
+        restoreBlankTemplate :: Compiler
+        -- 開始時: 旧仮想ヘッドの 'VC'
+        -- 終了時: 'WB' の blank code 終端 'B'
+        restoreBlankTemplate = moveAfter (UTM.L, UTM.WB)
+                               `compose` unmarkBits
+
+        seekNewVirtualHead :: Compiler
+        -- 開始時: 'WB' の blank code 終端 'B'
+        -- 終了時: 新しく実体化したブロックの 'HVC'
+        seekNewVirtualHead = moveTo (UTM.R, UTM.HVC)
 
         copyBlankCode :: Compiler
+        -- 開始時: 'WB' の blank code の最下位桁
+        -- 終了時: 'WB'
         copyBlankCode = while (/= UTM.WB) copyBit
-                        `compose` moveTo (UTM.R, UTM.HVC)
-                        `compose` moveL
-                        `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
-                        `compose`
-                          branch (== UTM.B) createVirtualHead
-                            (halt UTM.InvalidVirtualTape)
-                        `compose` moveR
-                        `compose` unmarkBits
-                        `compose` moveTo (UTM.R, UTM.HVC)
-                        `compose` unmarkVirtualHead
-                        `compose` moveAfter (UTM.L, UTM.WB)
-                        `compose` unmarkBits
-                        `compose` moveTo (UTM.R, UTM.HVC)
           where
             copyBit :: Compiler
+            -- 開始時: 'WB' の未コピー最下位桁
+            -- 終了時: 次の未コピー桁、または 'WB'
             copyBit = branch (== UTM.I) copyI
-                        (branch (== UTM.O) copyO (halt UTM.InvalidVirtualTape))
+                        (branch (== UTM.O) copyO
+                          (halt UTM.InvalidVirtualTape))
 
-            unmarkBits :: Compiler
-            unmarkBits = while (`elem` [UTM.MI, UTM.MO]) unmarkBit
-              where unmarkBit ::Compiler
-                    unmarkBit = branch (== UTM.MI) (write UTM.I)
-                                  (branch (== UTM.MO) (write UTM.O)
-                                    (halt UTM.InvalidVirtualTape))
-                                `compose` moveR
+            copyI :: Compiler
+            -- 開始時: 'WB' の未コピー 'I'
+            -- 終了時: 次の未コピー桁、または 'WB'
+            copyI = markAndCopyBit UTM.MI
 
-        markAndCopyBit :: UTM.S -> Compiler
-        markAndCopyBit s = write s
-                           `compose` moveTo (UTM.R, UTM.HVC)
-                           `compose` moveL
-                           `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
-                           `compose`
-                             branch (/= UTM.B) (halt UTM.InvalidVirtualTape)
-                               ( write s
-                                 `compose` moveTo (UTM.L, UTM.WB)
-                                 `compose` moveR
-                                 `compose` skipSeqR
-                                 `compose` moveL
-                               )
-        copyI :: Compiler
-        copyI = markAndCopyBit UTM.MI
+            copyO :: Compiler
+            -- 開始時: 'WB' の未コピー 'O'
+            -- 終了時: 次の未コピー桁、または 'WB'
+            copyO = markAndCopyBit UTM.MO
 
-        copyO :: Compiler
-        copyO = markAndCopyBit UTM.MO
-
-
+            markAndCopyBit :: UTM.S -> Compiler
+            -- 開始時: 'WB' の未コピー最下位桁
+            -- 終了時: 次の未コピー桁、または 'WB'
+            markAndCopyBit s = write s
+                               `compose` moveTo (UTM.R, UTM.HVC)
+                               `compose` moveL
+                               `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
+                               `compose`
+                                 branch (/= UTM.B) (halt UTM.InvalidVirtualTape)
+                                   ( write s
+                                     `compose` moveTo (UTM.L, UTM.WB)
+                                     `compose` moveR
+                                     `compose` skipSeqR
+                                     `compose` moveL
+                                   )
+        unmarkBits :: Compiler
+        -- 開始時: 'MI' / 'MO' の連続列先頭
+        -- 終了時: 列直後の非マーク
+        unmarkBits = while (`elem` [UTM.MI, UTM.MO]) unmarkBit
+          where unmarkBit :: Compiler
+                -- 開始時: 'MI' または 'MO'
+                -- 終了時: その右隣
+                unmarkBit = branch (== UTM.MI) (write UTM.I)
+                              (branch (== UTM.MO) (write UTM.O)
+                                (halt UTM.InvalidVirtualTape))
+                            `compose` moveR
 
         expandLeftBuffer :: Compiler
+        -- 開始時: 'VT'
+        -- 終了時: 新しく確保した左端ブロックの 'HVC'
         expandLeftBuffer = undefined
 
 
