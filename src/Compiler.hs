@@ -200,17 +200,76 @@ Failed VirtualTapeLeftBoundaryExceeded ([B,I,O,WB],VT,[HVC,I,O,VC,I,I])
 moveVirtualHeadL :: Compiler
 moveVirtualHeadL = moveL
                    `compose` while isPlainBit moveL
-                   `compose` branch (== UTM.VC)
-                      ( markVirtualHead
+                   `compose` branch (== UTM.VC) moveToExistingCell
+                     (branch (== UTM.B) consumeLeftBuffer
+                       (branch (== UTM.VT) expandLeftBuffer
+                         (halt UTM.InvalidVirtualTape)))
+  where moveToExistingCell :: Compiler
+        moveToExistingCell = markVirtualHead
+                             `compose` moveR
+                             `compose` skipSeqR
+                             `compose` branch (== UTM.HVC)
+                                (unmarkVirtualHead `compose` moveL `compose` skipSeqL)
+                                (halt UTM.InvalidVirtualTape)
+
+        consumeLeftBuffer:: Compiler
+        consumeLeftBuffer = moveAfter (UTM.L, UTM.WB)
+                            `compose` skipSeqR
+                            `compose` moveL
+                            `compose` copyBlankCode
+
+        copyBlankCode :: Compiler
+        copyBlankCode = while (/= UTM.WB) copyBit
+                        `compose` moveTo (UTM.R, UTM.HVC)
+                        `compose` moveL
+                        `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
+                        `compose`
+                          branch (== UTM.B) createVirtualHead
+                            (halt UTM.InvalidVirtualTape)
                         `compose` moveR
-                        `compose` skipSeqR
-                        `compose` branch (== UTM.HVC)
-                           (unmarkVirtualHead `compose` moveL `compose` skipSeqL)
-                           (halt UTM.InvalidVirtualTape)
-                      )
-                      (branch (== UTM.VT)
-                        (halt UTM.VirtualTapeLeftBoundaryExceeded)
-                        (halt UTM.InvalidVirtualTape))
+                        `compose` unmarkBits
+                        `compose` moveTo (UTM.R, UTM.HVC)
+                        `compose` unmarkVirtualHead
+                        `compose` moveAfter (UTM.L, UTM.WB)
+                        `compose` unmarkBits
+                        `compose` moveTo (UTM.R, UTM.HVC)
+          where
+            copyBit :: Compiler
+            copyBit = branch (== UTM.I) copyI
+                        (branch (== UTM.O) copyO (halt UTM.InvalidVirtualTape))
+
+            unmarkBits :: Compiler
+            unmarkBits = while (`elem` [UTM.MI, UTM.MO]) unmarkBit
+              where unmarkBit ::Compiler
+                    unmarkBit = branch (== UTM.MI) (write UTM.I)
+                                  (branch (== UTM.MO) (write UTM.O)
+                                    (halt UTM.InvalidVirtualTape))
+                                `compose` moveR
+
+        markAndCopyBit :: UTM.S -> Compiler
+        markAndCopyBit s = write s
+                           `compose` moveTo (UTM.R, UTM.HVC)
+                           `compose` moveL
+                           `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
+                           `compose`
+                             branch (/= UTM.B) (halt UTM.InvalidVirtualTape)
+                               ( write s
+                                 `compose` moveTo (UTM.L, UTM.WB)
+                                 `compose` moveR
+                                 `compose` skipSeqR
+                                 `compose` moveL
+                               )
+        copyI :: Compiler
+        copyI = markAndCopyBit UTM.MI
+
+        copyO :: Compiler
+        copyO = markAndCopyBit UTM.MO
+
+
+
+        expandLeftBuffer :: Compiler
+        expandLeftBuffer = undefined
+
 
 {-| 仮想ヘッドを右へ1セル移動する。
 次セルが 'VC' ならそれを 'HVC' に置換する。右端の 'B' なら、'WB' の
