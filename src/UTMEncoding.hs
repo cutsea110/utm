@@ -133,15 +133,14 @@ encodeVirtualTapeWith codebook (ls, h, rs) = concat $ buffer ++ cells
   where cells  = reverse (map normalCell ls) ++ [headCell h] ++ map normalCell rs
         normalCell s = UTM.VC  : encodeSymbolWith codebook s
         headCell s   = UTM.HVC : encodeSymbolWith codebook s
-        blankCell    = UTM.VC  : blankCode codebook
+        blockWidth   = symbolWidth codebook + 1
         -- 左端に伸びるためのバッファを事前追加。
-        -- TODO: 境界を超えて左に伸びた場合の処理をどうするか検討する必要がある。
-        buffer = replicate (length cells) blankCell
+        buffer = [replicate (blockWidth * length cells) UTM.B]
 
 {-| UTM のテープにエンコードする
 >>> import TM1
 >>> encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])
-([],PD,[TS,O,SP,O,O,SP,I,SP,O,I,SP,I,ST,TS,O,SP,O,I,SP,O,SP,O,O,SP,O,ST,TS,O,SP,I,O,SP,I,SP,O,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,B,B,WB,I,O,B,VT,VC,I,O,VC,I,O,VC,I,O,VC,I,O,VC,O,I,HVC,O,I,VC,I,O,VC,I,O])
+([],PD,[TS,O,SP,O,O,SP,I,SP,O,I,SP,I,ST,TS,O,SP,O,I,SP,O,SP,O,O,SP,O,ST,TS,O,SP,I,O,SP,I,SP,O,I,SP,I,ST,PC,O,B,WQ,B,B,WS,B,B,B,WB,I,O,B,VT,B,B,B,B,B,B,B,B,B,B,B,B,VC,O,I,HVC,O,I,VC,I,O,VC,I,O])
 -}
 encode :: (TM.TuringMachine tm, Eq (TM.State tm), Eq (TM.Symbol tm))
        => tm -> ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]) -> UTM.Tape
@@ -181,12 +180,12 @@ VT 左の確保用バッファと両端の余分な空白は、ターゲット�
 
 >>> import TM1
 >>> decodeConfiguration TM1 (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank]))
-(Carry,([One,Blank,Blank,Blank,Blank],One,[Blank,Blank]))
+(Carry,([One],One,[Blank,Blank]))
 
 ヘッド位置と右側の非空白記号も復元する。
 
 >>> decodeConfiguration TM1 (encode TM1 ([], TM1.Zero, [TM1.One, TM1.Blank]))
-(Carry,([Blank,Blank,Blank],Zero,[One,Blank]))
+(Carry,([],Zero,[One,Blank]))
 
 UTM の1ステップ後は、書込みとヘッド移動を含む構成を復元する。
 
@@ -195,7 +194,7 @@ UTM の1ステップ後は、書込みとヘッド移動を含む構成を復元
 >>> import qualified UTMEval
 >>> let stepProgram = (UTM.S 0, snd (utmStep defEnv))
 >>> decodeConfiguration TM1 (UTMEval.eval stepProgram (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])))
-(Carry,([Blank,Blank,Blank,Blank],One,[Zero,Blank,Blank]))
+(Carry,([],One,[Zero,Blank,Blank]))
 -}
 decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
                     => tm -> UTM.Tape -> (TM.State tm, ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]))
@@ -214,7 +213,7 @@ decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
 
     virtualTape = (reverse (map decodeSymbol leftCells), decodeSymbol headCell, map decodeSymbol rightCells)
       where
-        cells = parseCells (after UTM.VT)
+        cells = parseCells $ dropWhile (== UTM.B) (after UTM.VT)
 
         parseCells [] = []
         parseCells (header:rest)
