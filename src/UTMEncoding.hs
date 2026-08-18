@@ -180,12 +180,12 @@ VT 左の確保用バッファと両端の余分な空白は、ターゲット�
 
 >>> import TM1
 >>> decodeConfiguration TM1 (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank]))
-(Carry,([One,Blank,Blank,Blank,Blank],One,[Blank,Blank]))
+(Carry,([One],One,[Blank,Blank]))
 
 ヘッド位置と右側の非空白記号も復元する。
 
 >>> decodeConfiguration TM1 (encode TM1 ([], TM1.Zero, [TM1.One, TM1.Blank]))
-(Carry,([Blank,Blank,Blank],Zero,[One,Blank]))
+(Carry,([],Zero,[One,Blank]))
 
 UTM の1ステップ後は、書込みとヘッド移動を含む構成を復元する。
 
@@ -194,7 +194,7 @@ UTM の1ステップ後は、書込みとヘッド移動を含む構成を復元
 >>> import qualified UTMEval
 >>> let stepProgram = (UTM.S 0, snd (utmStep defEnv))
 >>> decodeConfiguration TM1 (UTMEval.eval stepProgram (encode TM1 ([TM1.One], TM1.One, [TM1.Blank, TM1.Blank])))
-(Carry,([Blank,Blank,Blank,Blank],One,[Zero,Blank,Blank]))
+(Carry,([],One,[Zero,Blank,Blank]))
 -}
 decodeConfiguration :: (TM.TuringMachine tm, Eq (TM.Symbol tm))
                     => tm -> UTM.Tape -> (TM.State tm, ([TM.Symbol tm], TM.Symbol tm, [TM.Symbol tm]))
@@ -213,7 +213,7 @@ decodeConfiguration tm (ls, h, rs) = (currentState, virtualTape)
 
     virtualTape = (reverse (map decodeSymbol leftCells), decodeSymbol headCell, map decodeSymbol rightCells)
       where
-        cells = parseCells (after UTM.VT)
+        cells = parseCells $ dropWhile (== UTM.B) (after UTM.VT)
 
         parseCells [] = []
         parseCells (header:rest)
