@@ -317,7 +317,128 @@ moveVirtualHeadL = moveL
         expandLeftBuffer :: Compiler
         -- 開始時: 'VT'
         -- 終了時: 新しく確保した左端ブロックの 'HVC'
-        expandLeftBuffer = undefined
+        expandLeftBuffer = appendSentinel
+                           `compose` migrateCurrentBlock
+                           `compose`
+                             while (== UTM.VC)
+                               (markVirtualHead `compose` migrateCurrentBlock)
+                           `compose`
+                             branch (== UTM.HVC) (clearFrontier `compose` moveTo (UTM.L, UTM.HVC))
+                               (halt UTM.InvalidVirtualTape)
+
+        appendSentinel :: Compiler
+        -- 開始時: 'VT'
+        -- 終了時: コピー元の cursor の 'HVC'
+        appendSentinel = moveTo (UTM.R, UTM.B)
+                         `compose` write UTM.HB
+                         `compose` moveAfter (UTM.L, UTM.WB)
+                         `compose` copyVirtualBlockToEnd UTM.HVC
+                         `compose` moveTo (UTM.R, UTM.HVC)
+
+        migrateCurrentBlock :: Compiler
+        -- 開始時: コピー元の cursor の 'HVC'
+        -- 終了時: 次の旧ブロックの `VC` または sentinel の `HVC`
+        migrateCurrentBlock = moveR
+                              `compose` copyVirtualBlockToEnd UTM.VC
+                              `compose` moveTo (UTM.L, UTM.HVC)
+                              `compose` rewriteVirtualHead UTM.HVC UTM.B
+                              `compose` moveR
+                              `compose` eraseR
+
+        clearFrontier :: Compiler
+        -- 開始時: sentinel の 'HVC'
+        -- 終了時: B (元の HB)
+        clearFrontier = moveTo (UTM.R, UTM.HB) `compose` rewriteVirtualHead UTM.HB UTM.B
+
+        copyVirtualBlockToEnd :: UTM.S -> Compiler
+        -- 開始時: コピー元符号列の最上位桁
+        -- 終了時: コピー元符号列の最上位桁
+        -- 前提: 右端にコピー先終端マーカーの 'HB' が1個ある
+        -- 結果: 元の 'HB' は header となり、その右に符号列と次の 'HB' を作る
+        copyVirtualBlockToEnd header = copyFirstBit
+                                       `compose` copyRemainingBits
+                                       `compose` restoreSource
+          where
+            copyFirstBit :: Compiler
+            -- 開始時: コピー元符号列の最上位桁
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyFirstBit = branch (== UTM.I) copyFirstI
+                             (branch (== UTM.O) copyFirstO
+                               (halt UTM.InvalidVirtualTape))
+
+            copyFirstI :: Compiler
+            -- 開始時: コピー元の最上位 'I'
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyFirstI = copyFirstMarked UTM.MI UTM.I
+
+            copyFirstO :: Compiler
+            -- 開始時: コピー元の最上位 'O'
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyFirstO = copyFirstMarked UTM.MO UTM.O
+
+            copyFirstMarked :: UTM.S -> UTM.S -> Compiler
+            -- 開始時: コピー元の最上位桁
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyFirstMarked sourceMark bit = write sourceMark
+                                               `compose` moveTo (UTM.R, UTM.HB)
+                                               `compose` rewriteVirtualHead UTM.HB header
+                                               `compose` moveR
+                                               `compose` write bit
+                                               `compose` moveR
+                                               `compose` rewriteVirtualHead UTM.B UTM.HB
+                                               `compose` nextSource
+
+            copyRemainingBits :: Compiler
+            -- 開始時: 次の未コピー元桁、またはコピー元終端
+            -- 終了時: コピー元終端
+            copyRemainingBits = while isPlainBit copyRemainingBit
+
+            copyRemainingBit :: Compiler
+            -- 開始時: コピー元の1桁
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyRemainingBit = branch (== UTM.I) copyRemainingI
+                               (branch (== UTM.O) copyRemainingO
+                                 (halt UTM.InvalidVirtualTape))
+
+            copyRemainingI :: Compiler
+            -- 開始時: コピー元の 'I'
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyRemainingI = copyRemainingMarked UTM.MI UTM.I
+
+            copyRemainingO :: Compiler
+            -- 開始時: コピー元の 'O'
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyRemainingO = copyRemainingMarked UTM.MO UTM.O
+
+            copyRemainingMarked :: UTM.S -> UTM.S -> Compiler
+            -- 開始時: コピー元の1桁
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            copyRemainingMarked sourceMark bit = write sourceMark
+                                                   `compose` moveTo (UTM.R, UTM.HB)
+                                                   `compose` write bit
+                                                   `compose` moveR
+                                                   `compose` rewriteVirtualHead UTM.B UTM.HB
+                                                   `compose` nextSource
+
+            nextSource :: Compiler
+            -- 開始時: コピー先終端マーカーの 'HB'
+            -- 終了時: 次のコピー元桁、またはコピー元終端
+            nextSource = while (not . isSourceMark) moveL `compose` moveR
+
+            restoreSource :: Compiler
+            -- 開始時: コピー元終端
+            -- 終了時: コピー元符号列の最上位桁
+            restoreSource = moveL `compose` while isSourceMark restoreBit `compose` moveR
+
+            restoreBit :: Compiler
+            -- 開始時: コピー元マーク
+            -- 終了時: その左隣
+            restoreBit = branch (== UTM.MI) (write UTM.I) (write UTM.O) `compose` moveL
+
+            isSourceMark :: UTM.S -> Bool
+            isSourceMark UTM.MI = True
+            isSourceMark UTM.MO = True
+            isSourceMark _      = False
 
 
 {-| 仮想ヘッドを右へ1セル移動する。
