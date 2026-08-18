@@ -86,7 +86,7 @@ copyCurrentHeadToWS = findHead `compose` moveR `compose` copyTo (UTM.L, UTM.WS)
     -- 開始時: 任意位置
     -- 終了時: 'HVC'
     findHead = moveAfter (UTM.R, UTM.VT)
-               `compose` while (== UTM.B) moveR -- go through buffer
+               `compose` while (== UTM.B) moveR -- 左バッファを通過
                `compose` while (`notElem` [UTM.HVC, UTM.B]) moveR
                `compose` branch (== UTM.HVC) nop (halt UTM.InvalidVirtualTape)
     nop :: Compiler
@@ -199,6 +199,7 @@ writeVirtualSymbol = eraseHeadCode
     --   終了時: 'HVC' の符号列を消去した直後の 'B'
     eraseHeadCode :: Compiler
     eraseHeadCode = moveAfter (UTM.R, UTM.VT)
+                    `compose` while (== UTM.B) moveR -- 左バッファを通過
                     `compose` while (`notElem` [UTM.HVC, UTM.B]) moveR
                     `compose` branch (== UTM.HVC) (moveR `compose` eraseR) (halt UTM.InvalidVirtualTape)
 
