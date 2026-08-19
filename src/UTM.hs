@@ -13,11 +13,11 @@ data D = R -- ^ move right
 data S = B  -- ^ blank
        | I  -- ^ 1
        | O  -- ^ 0
-       | MI -- ^ marked 1
-       | MO -- ^ marked 0
-       | HB -- ^ TODO: remove after VC supported
-       | HI -- ^ comparison target marked 1
-       | HO -- ^ comparison target marked 0
+       | SI -- ^ source marked 1
+       | SO -- ^ source marked 0
+       | EF -- ^ 左拡張中のコピー先終端 frontier
+       | TI -- ^ target marked 1
+       | TO -- ^ target marked 0
        | PD -- ^ partition delta
        | PC -- ^ partition current state
        | WQ -- ^ partition work Q
@@ -34,7 +34,7 @@ data S = B  -- ^ blank
 
 -- | allSymbols: 全てのシンボル
 allSymbols :: [S]
-allSymbols = [B, I, O, MI, MO, HB, HI, HO, PD, PC, WQ, WS, WB, VT, TS, MTS, ST, SP, VC, HVC]
+allSymbols = [B, I, O, SI, SO, EF, TI, TO, PD, PC, WQ, WS, WB, VT, TS, MTS, ST, SP, VC, HVC]
 
 -- | writableSymbols: 書き込み可能なシンボル
 writableSymbols :: [S]
@@ -42,7 +42,7 @@ writableSymbols = [B, I, O]
 
 -- | 限定利用シンボル (コピーと照合の関数でのみ出現可能)
 restrictedSymbols :: [S]
-restrictedSymbols = [MI, MO, HB, HI, HO]
+restrictedSymbols = [SI, SO, EF, TI, TO]
 
 -- | readOnlySymbol: 上書き禁止部のシンボル
 readOnlySymbols :: [S]
@@ -99,11 +99,11 @@ charS :: S -> Char
 charS B   = '_'
 charS I   = '1'
 charS O   = '0'
-charS MI  = 'I'
-charS MO  = 'O'
-charS HB  = '^'
-charS HI  = 'i'
-charS HO  = 'o'
+charS SI  = 'I'
+charS SO  = 'O'
+charS EF  = '.'
+charS TI  = 'i'
+charS TO  = 'o'
 charS PD  = 'D'
 charS PC  = 'C'
 charS WQ  = 'Q'

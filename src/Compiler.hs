@@ -238,7 +238,7 @@ moveVirtualHeadL = moveL
         -- 終了時: 新しく実体化したブロックの 'HVC'
         createNewVirtualHead = moveTo (UTM.R, UTM.HVC)
                                `compose` moveL
-                               `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
+                               `compose` while (`elem` [UTM.SI, UTM.SO]) moveL
                                `compose`
                                  branch (== UTM.B) createVirtualHead
                                    (halt UTM.InvalidVirtualTape)
@@ -281,12 +281,12 @@ moveVirtualHeadL = moveL
             copyI :: Compiler
             -- 開始時: 'WB' の未コピー 'I'
             -- 終了時: 次の未コピー桁、または 'WB'
-            copyI = markAndCopyBit UTM.MI
+            copyI = markAndCopyBit UTM.SI
 
             copyO :: Compiler
             -- 開始時: 'WB' の未コピー 'O'
             -- 終了時: 次の未コピー桁、または 'WB'
-            copyO = markAndCopyBit UTM.MO
+            copyO = markAndCopyBit UTM.SO
 
             markAndCopyBit :: UTM.S -> Compiler
             -- 開始時: 'WB' の未コピー最下位桁
@@ -294,7 +294,7 @@ moveVirtualHeadL = moveL
             markAndCopyBit s = write s
                                `compose` moveTo (UTM.R, UTM.HVC)
                                `compose` moveL
-                               `compose` while (`elem` [UTM.MI, UTM.MO]) moveL
+                               `compose` while (`elem` [UTM.SI, UTM.SO]) moveL
                                `compose`
                                  branch (/= UTM.B) (halt UTM.InvalidVirtualTape)
                                    ( write s
@@ -304,14 +304,14 @@ moveVirtualHeadL = moveL
                                      `compose` moveL
                                    )
         unmarkBits :: Compiler
-        -- 開始時: 'MI' / 'MO' の連続列先頭
+        -- 開始時: 'SI' / 'SO' の連続列先頭
         -- 終了時: 列直後の非マーク
-        unmarkBits = while (`elem` [UTM.MI, UTM.MO]) unmarkBit
+        unmarkBits = while (`elem` [UTM.SI, UTM.SO]) unmarkBit
           where unmarkBit :: Compiler
-                -- 開始時: 'MI' または 'MO'
+                -- 開始時: 'SI' または 'SO'
                 -- 終了時: その右隣
-                unmarkBit = branch (== UTM.MI) (write UTM.I)
-                              (branch (== UTM.MO) (write UTM.O)
+                unmarkBit = branch (== UTM.SI) (write UTM.I)
+                              (branch (== UTM.SO) (write UTM.O)
                                 (halt UTM.InvalidVirtualTape))
                             `compose` moveR
 
@@ -331,7 +331,7 @@ moveVirtualHeadL = moveL
         -- 開始時: 'VT'
         -- 終了時: コピー元の cursor の 'HVC'
         appendSentinel = moveTo (UTM.R, UTM.B)
-                         `compose` write UTM.HB
+                         `compose` write UTM.EF
                          `compose` moveAfter (UTM.L, UTM.WB)
                          `compose` copyVirtualBlockToEnd UTM.HVC
                          `compose` moveTo (UTM.R, UTM.HVC)
@@ -348,14 +348,14 @@ moveVirtualHeadL = moveL
 
         clearFrontier :: Compiler
         -- 開始時: sentinel の 'HVC'
-        -- 終了時: B (元の HB)
-        clearFrontier = moveTo (UTM.R, UTM.HB) `compose` rewriteVirtualHead UTM.HB UTM.B
+        -- 終了時: B (元の EF)
+        clearFrontier = moveTo (UTM.R, UTM.EF) `compose` rewriteVirtualHead UTM.EF UTM.B
 
         copyVirtualBlockToEnd :: UTM.S -> Compiler
         -- 開始時: コピー元符号列の最上位桁
         -- 終了時: コピー元符号列の最上位桁
-        -- 前提: 右端にコピー先終端マーカーの 'HB' が1個ある
-        -- 結果: 元の 'HB' は header となり、その右に符号列と次の 'HB' を作る
+        -- 前提: 右端にコピー先終端マーカーの 'EF' が1個ある
+        -- 結果: 元の 'EF' は header となり、その右に符号列と次の 'EF' を作る
         copyVirtualBlockToEnd header = copyFirstBit
                                        `compose` copyRemainingBits
                                        `compose` restoreSource
@@ -370,23 +370,23 @@ moveVirtualHeadL = moveL
             copyFirstI :: Compiler
             -- 開始時: コピー元の最上位 'I'
             -- 終了時: 次のコピー元桁、またはコピー元終端
-            copyFirstI = copyFirstMarked UTM.MI UTM.I
+            copyFirstI = copyFirstMarked UTM.SI UTM.I
 
             copyFirstO :: Compiler
             -- 開始時: コピー元の最上位 'O'
             -- 終了時: 次のコピー元桁、またはコピー元終端
-            copyFirstO = copyFirstMarked UTM.MO UTM.O
+            copyFirstO = copyFirstMarked UTM.SO UTM.O
 
             copyFirstMarked :: UTM.S -> UTM.S -> Compiler
             -- 開始時: コピー元の最上位桁
             -- 終了時: 次のコピー元桁、またはコピー元終端
             copyFirstMarked sourceMark bit = write sourceMark
-                                               `compose` moveTo (UTM.R, UTM.HB)
-                                               `compose` rewriteVirtualHead UTM.HB header
+                                               `compose` moveTo (UTM.R, UTM.EF)
+                                               `compose` rewriteVirtualHead UTM.EF header
                                                `compose` moveR
                                                `compose` write bit
                                                `compose` moveR
-                                               `compose` rewriteVirtualHead UTM.B UTM.HB
+                                               `compose` rewriteVirtualHead UTM.B UTM.EF
                                                `compose` nextSource
 
             copyRemainingBits :: Compiler
@@ -404,25 +404,25 @@ moveVirtualHeadL = moveL
             copyRemainingI :: Compiler
             -- 開始時: コピー元の 'I'
             -- 終了時: 次のコピー元桁、またはコピー元終端
-            copyRemainingI = copyRemainingMarked UTM.MI UTM.I
+            copyRemainingI = copyRemainingMarked UTM.SI UTM.I
 
             copyRemainingO :: Compiler
             -- 開始時: コピー元の 'O'
             -- 終了時: 次のコピー元桁、またはコピー元終端
-            copyRemainingO = copyRemainingMarked UTM.MO UTM.O
+            copyRemainingO = copyRemainingMarked UTM.SO UTM.O
 
             copyRemainingMarked :: UTM.S -> UTM.S -> Compiler
             -- 開始時: コピー元の1桁
             -- 終了時: 次のコピー元桁、またはコピー元終端
             copyRemainingMarked sourceMark bit = write sourceMark
-                                                   `compose` moveTo (UTM.R, UTM.HB)
+                                                   `compose` moveTo (UTM.R, UTM.EF)
                                                    `compose` write bit
                                                    `compose` moveR
-                                                   `compose` rewriteVirtualHead UTM.B UTM.HB
+                                                   `compose` rewriteVirtualHead UTM.B UTM.EF
                                                    `compose` nextSource
 
             nextSource :: Compiler
-            -- 開始時: コピー先終端マーカーの 'HB'
+            -- 開始時: コピー先終端マーカーの 'EF'
             -- 終了時: 次のコピー元桁、またはコピー元終端
             nextSource = while (not . isSourceMark) moveL `compose` moveR
 
@@ -434,11 +434,11 @@ moveVirtualHeadL = moveL
             restoreBit :: Compiler
             -- 開始時: コピー元マーク
             -- 終了時: その左隣
-            restoreBit = branch (== UTM.MI) (write UTM.I) (write UTM.O) `compose` moveL
+            restoreBit = branch (== UTM.SI) (write UTM.I) (write UTM.O) `compose` moveL
 
             isSourceMark :: UTM.S -> Bool
-            isSourceMark UTM.MI = True
-            isSourceMark UTM.MO = True
+            isSourceMark UTM.SI = True
+            isSourceMark UTM.SO = True
             isSourceMark _      = False
 
 
@@ -730,12 +730,12 @@ copyToUntil (markerDirection, marker) sourceEnd = copyBits `compose` restoreSour
     copyI :: Compiler
     -- 開始時: 'I'
     -- 終了時: 次の未コピー元ビット
-    copyI = copyMarked UTM.MI UTM.I
+    copyI = copyMarked UTM.SI UTM.I
 
     copyO :: Compiler
     -- 開始時: 'O'
     -- 終了時: 次の未コピー元ビット
-    copyO = copyMarked UTM.MO UTM.O
+    copyO = copyMarked UTM.SO UTM.O
 
     copyMarked :: UTM.S -> UTM.S -> Compiler
     -- 開始時: コピー元の1ビット
@@ -763,11 +763,11 @@ copyToUntil (markerDirection, marker) sourceEnd = copyBits `compose` restoreSour
     restoreBit :: Compiler
     -- 開始時: コピー元マーク
     -- 終了時: その左隣
-    restoreBit = branch (== UTM.MI) (write UTM.I) (write UTM.O) `compose` moveL
+    restoreBit = branch (== UTM.SI) (write UTM.I) (write UTM.O) `compose` moveL
 
     isMark :: UTM.S -> Bool
-    isMark UTM.MI = True
-    isMark UTM.MO = True
+    isMark UTM.SI = True
+    isMark UTM.SO = True
     isMark _      = False
 
     isSourceBit :: UTM.S -> Bool
@@ -830,12 +830,12 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
     compareI :: Compiler
     -- 開始時: 比較元の 'I'
     -- 終了時: 次の比較元ビットまたは不一致位置
-    compareI = compareMarked UTM.MI UTM.HI UTM.I
+    compareI = compareMarked UTM.SI UTM.TI UTM.I
 
     compareO :: Compiler
     -- 開始時: 比較元の 'O'
     -- 終了時: 次の比較元ビットまたは不一致位置
-    compareO = compareMarked UTM.MO UTM.HO UTM.O
+    compareO = compareMarked UTM.SO UTM.TO UTM.O
 
     compareMarked :: UTM.S -> UTM.S -> UTM.S -> Compiler
     -- 開始時: 比較元の1ビット
@@ -846,7 +846,7 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
       , skipTargetMarks
       , branch (== bit)
           (write targetMark `compose` restoreSource bit `compose` moveR)
-          (branch (== targetEnd) seekSourceMark (branch (== UTM.I) (write UTM.HI) (write UTM.HO)))
+          (branch (== targetEnd) seekSourceMark (branch (== UTM.I) (write UTM.TI) (write UTM.TO)))
       ]
 
     finish :: Compiler
@@ -888,7 +888,7 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
     targetLonger :: Compiler
     -- 開始時: 比較先に余った最初のビット
     -- 終了時: その左隣
-    targetLonger = branch (== UTM.I) (write UTM.HI) (write UTM.HO)
+    targetLonger = branch (== UTM.I) (write UTM.TI) (write UTM.TO)
                  `compose` cleanupFromTarget
                  `compose` moveL
 
@@ -903,7 +903,7 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
     restoreSourceMark :: Compiler
     -- 開始時: 比較元マーク
     -- 終了時: 同じセル
-    restoreSourceMark = branch (== UTM.MI) (write UTM.I) (write UTM.O)
+    restoreSourceMark = branch (== UTM.SI) (write UTM.I) (write UTM.O)
 
     skipTargetMarks :: Compiler
     -- 開始時: 比較先の先頭
@@ -918,7 +918,7 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
     restoreBit :: Compiler
     -- 開始時: 比較先マーク
     -- 終了時: その右隣
-    restoreBit = branch (== UTM.HI) (write UTM.I) (write UTM.O) `compose` moveR
+    restoreBit = branch (== UTM.TI) (write UTM.I) (write UTM.O) `compose` moveR
 
     cleanupFromTarget :: Compiler
     -- 開始時: 比較先側
@@ -926,21 +926,21 @@ matchUntil sourceEnd (markerDirection, marker) targetEnd = compareBits `compose`
     cleanupFromTarget = moveAfter (UTM.L, marker) `compose` restoreTarget
 
     continueSource :: UTM.S -> Bool
-    continueSource UTM.MI = False
-    continueSource UTM.MO = False
-    continueSource UTM.HI = False
-    continueSource UTM.HO = False
+    continueSource UTM.SI = False
+    continueSource UTM.SO = False
+    continueSource UTM.TI = False
+    continueSource UTM.TO = False
     continueSource s | s == sourceEnd = False
     continueSource s      = isPlainBit s
 
     isSourceMark :: UTM.S -> Bool
-    isSourceMark UTM.MI = True
-    isSourceMark UTM.MO = True
+    isSourceMark UTM.SI = True
+    isSourceMark UTM.SO = True
     isSourceMark _      = False
 
     isTargetMark :: UTM.S -> Bool
-    isTargetMark UTM.HI = True
-    isTargetMark UTM.HO = True
+    isTargetMark UTM.TI = True
+    isTargetMark UTM.TO = True
     isTargetMark _      = False
 
     opposite :: UTM.D -> UTM.D
