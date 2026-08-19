@@ -5,7 +5,7 @@ import Data.List (nub)
 import Compiler (defEnv)
 import TuringMachine (TuringMachine(..))
 import UTM  as U
-import UTMEncoding (encode, decodeConfiguration)
+import UTMEncoding (encode, encodeTransition, decodeConfiguration)
 import UTMEval (eval)
 import UTMProgram (utm)
 
@@ -41,6 +41,27 @@ instance TuringMachine UTMTarget where
     Nothing               -> Nothing
   transition _ (ReturnL q) s = Just (Run q, s, U.L)
 
+utmTargetTransitions :: [(UTMState, U.S, UTMState, U.S, U.D)]
+utmTargetTransitions =
+  [ (q, s, q', s', d)
+  | q <- states UTMTarget
+  , s <- symbols UTMTarget
+  , Just (q', s', d) <- [transition UTMTarget q s]
+  ]
+
+showUTMTargetStats :: IO ()
+showUTMTargetStats = do
+  let patternLengths = map (length . encodeTransition UTMTarget) utmTargetTransitions
+      transitionCount = length utmTargetTransitions
+      totalLength = sum patternLengths
+      average = fromIntegral totalLength / fromIntegral transitionCount :: Double
+    in do { putStrLn $ "native UTM delta entries: " ++ show (length delta)
+          ; putStrLn $ "UTMTarget states: " ++ show (length (states UTMTarget))
+          ; putStrLn $ "UTMTarget transitions: " ++ show transitionCount
+          ; putStrLn $ "encoded transition length (min/max/avg): " ++ show (minimum patternLengths, maximum patternLengths, average)
+          ; putStrLn $ "encoded program cells: " ++ show totalLength
+          }
+
 main :: IO ()
 main = do
   putStrLn "=== TM1 ==="
@@ -61,12 +82,15 @@ main = do
   let tape3e = UTMEval.eval (S 0, delta) tape3b
   putStrLn $ "END:   " ++ show (decodeConfiguration TM3 tape3e)
 
+  putStrLn "=== UTMTarget statistics ==="
+  showUTMTargetStats
+
   putStrLn "=== TM3 over UTM over UTM ==="
   let tape4b = encode UTMTarget tape3b
   let (_, innerb) = decodeConfiguration UTMTarget tape4b
-  putStrLn $ "BEGIN:   " ++ show (decodeConfiguration UTMTarget tape4b)
-  putStrLn $ "- INNER: " ++ show (decodeConfiguration TM3 innerb)
+  putStrLn $ "OUTER: " ++ show (decodeConfiguration UTMTarget tape4b)
+  putStrLn $ "INNER: " ++ show (decodeConfiguration TM3 innerb)
   let tape4e = UTMEval.eval (S 0, delta) tape4b
   let (_, innere) = decodeConfiguration UTMTarget tape4e
-  putStrLn $ "END:     " ++ show (decodeConfiguration UTMTarget tape4e)
-  putStrLn $ "- INNER: " ++ show (decodeConfiguration TM3 innere)
+  putStrLn $ "OUTER:" ++ show (decodeConfiguration UTMTarget tape4e)
+  putStrLn $ "INNER:" ++ show (decodeConfiguration TM3 innere)

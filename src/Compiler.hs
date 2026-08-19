@@ -2,7 +2,7 @@ module Compiler where
 
 import UTM (Q(..), HaltReason(..), Delta, A(..), S(..), D(..), Tape, showTape
            , allSymbols, writableSymbols, restrictedSymbols)
-import UTMEval (eval, run)
+import UTMEval (eval)
 
 data Env = Env { state :: Int
                }
@@ -118,6 +118,7 @@ while predicate body whileInitialEnv =
 開始時: 現在位置
 終了時: 現在位置（停止）
 
+>>> import UTMEval (run)
 >>> run (S 0, snd (halt UTM.VirtualTapeLeftBoundaryExceeded defEnv)) ([], UTM.B, [])
 Failed VirtualTapeLeftBoundaryExceeded ([],B,[])
 -}
