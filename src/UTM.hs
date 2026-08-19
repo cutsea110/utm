@@ -147,11 +147,3 @@ showTape (ls, h, rs) = [map charS tape, replicate idx ' ' ++ "^"]
   where
     idx = length ls
     tape = reverse ls ++ [h] ++ rs
-
-addOne :: Program
-addOne = (S 0, [ ((S 0, I), (S 1, Write O))
-               , ((S 0, O), (S 2, Write I))
-               , ((S 0, B), (S 2, Write I))
-               , ((S 1, I), (S 0, Move L))
-               , ((S 1, O), (S 0, Move L))
-               ])
