@@ -60,3 +60,13 @@ main = do
   putStrLn $ "BEGIN: " ++ show (decodeConfiguration TM3 tape3b)
   let tape3e = UTMEval.eval (S 0, delta) tape3b
   putStrLn $ "END:   " ++ show (decodeConfiguration TM3 tape3e)
+
+  putStrLn "=== TM3 over UTM over UTM ==="
+  let tape4b = encode UTMTarget tape3b
+  let (_, innerb) = decodeConfiguration UTMTarget tape4b
+  putStrLn $ "BEGIN:   " ++ show (decodeConfiguration UTMTarget tape4b)
+  putStrLn $ "- INNER: " ++ show (decodeConfiguration TM3 innerb)
+  let tape4e = UTMEval.eval (S 0, delta) tape4b
+  let (_, innere) = decodeConfiguration UTMTarget tape4e
+  putStrLn $ "END:     " ++ show (decodeConfiguration UTMTarget tape4e)
+  putStrLn $ "- INNER: " ++ show (decodeConfiguration TM3 innere)
