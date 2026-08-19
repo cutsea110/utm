@@ -41,8 +41,12 @@ data Result
 {-| プログラムを停止するまで実行し、停止結果を返す。
 'UTM.TargetHalted' は対象 TM の正常終了、その他の 'UTM.HaltReason' は UTM 側の異常終了として扱う。
 
->>> run UTM.addOne ([], UTM.I, [])
-Stuck (S 2) ([],I,[O])
+>>> import qualified UTM
+>>> let targetHalt = (UTM.S 0, [((UTM.S 0, UTM.I), (UTM.Halt UTM.TargetHalted, UTM.Nop))])
+>>> run targetHalt ([], UTM.I, [])
+Finished ([],I,[])
+>>> run (UTM.S 0, []) ([], UTM.I, [])
+Stuck (S 0) ([],I,[])
 -}
 run :: UTM.Program -> UTM.Tape -> Result
 run program tape = case exec delta (state, tape) of
