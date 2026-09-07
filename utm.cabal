@@ -43,6 +43,6 @@ test-suite doctest
     import:           warnings
     type:             exitcode-stdio-1.0
     main-is:          Doctest.hs
-    build-depends:    base ^>=4.22.0.0, doctest
+    build-depends:    base ^>=4.22.0.0, doctest, directory, filepath
     hs-source-dirs:   test
     default-language: GHC2024
